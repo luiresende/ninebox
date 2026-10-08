@@ -1,0 +1,47 @@
+rules_version = '2';
+
+// ============================================================================
+// Firestore Security Rules — controle de acesso REAL (lado servidor)
+// ----------------------------------------------------------------------------
+// Modelo:
+//   coleção "members", 1 doc por colaborador, DOC ID = e-mail (minúsculo).
+//
+// Papéis:
+//   LÍDER       -> e-mail na lista leaders() abaixo. Lê e escreve TUDO.
+//   COLABORADOR -> lê SOMENTE o doc cujo ID == seu próprio e-mail. Não escreve.
+//
+// IMPORTANTE: mantenha a lista de líderes em sincronia com LEADER_EMAILS em
+// js/store.js. Aqui é o que vale de verdade; o front-end só reflete.
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Lista de e-mails de líderes (minúsculo).
+    function leaders() {
+      return ['lcalmeida4@stefanini.com'];
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // e-mail do usuário autenticado, normalizado em minúsculo.
+    function userEmail() {
+      return isSignedIn() ? request.auth.token.email.lower() : '';
+    }
+
+    function isLeader() {
+      return isSignedIn() && userEmail() in leaders();
+    }
+
+    match /members/{memberId} {
+      // Líder lê qualquer doc. Colaborador lê só o doc cujo ID == seu e-mail.
+      allow read: if isLeader()
+                  || (isSignedIn() && memberId == userEmail());
+
+      // Apenas líderes criam, editam ou excluem avaliações.
+      allow create, update, delete: if isLeader();
+    }
+  }
+}

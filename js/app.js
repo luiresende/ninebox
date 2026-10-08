@@ -12,6 +12,11 @@
   const radarCharts = {}; // pillarId -> Chart
   let nineBoxChart = null;
 
+  // Papel do usuário logado. Líder edita; colaborador só visualiza o próprio.
+  function canEdit() {
+    return Store.isLeader();
+  }
+
   // --------------------------- Util DOM ------------------------------------
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -53,6 +58,11 @@
     }
   }
 
+  // Mensagem quando o colaborador ainda não tem avaliação cadastrada.
+  function collaboratorEmptyMessage() {
+    return 'Sua avaliação ainda não foi cadastrada. Procure seu líder.';
+  }
+
   // --------------------------- View: Time ----------------------------------
   function renderTeam() {
     const list = $('#member-list');
@@ -74,7 +84,12 @@
         <div class="m-role">${escapeHtml(m.role || '—')}</div>
         <span class="m-box">${Model.nineBoxLabel(m)}</span>
       `;
-      card.addEventListener('click', () => openMemberModal(m.id));
+      if (canEdit()) {
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', () => openMemberModal(m.id));
+      } else {
+        card.style.cursor = 'default';
+      }
       list.appendChild(card);
     });
   }
@@ -87,11 +102,15 @@
 
   // --------------------------- Modal ---------------------------------------
   function openMemberModal(id) {
+    if (!canEdit()) return; // colaborador não cadastra/edita
     editingId = id || null;
     const member = id ? members.find((m) => m.id === id) : null;
     $('#modal-title').textContent = member ? 'Editar colaborador' : 'Novo colaborador';
     $('#input-name').value = member ? member.name : '';
+    $('#input-email').value = member ? member.email || member.id : '';
     $('#input-role').value = member ? member.role || '' : '';
+    // o e-mail é a chave do documento: não pode mudar ao editar
+    $('#input-email').disabled = !!member;
     $('#btn-delete-member').classList.toggle('hidden', !member);
     $('#member-modal').classList.remove('hidden');
     $('#input-name').focus();
@@ -119,7 +138,18 @@
       m.role = role;
       await Store.save(m);
     } else {
-      const m = { id: Store.newId(), name, role, scores: {} };
+      // novo colaborador: e-mail (normalizado) é o ID do documento
+      const email = Store.normEmail ? Store.normEmail($('#input-email').value) : $('#input-email').value.trim().toLowerCase();
+      if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        alert('Informe um e-mail válido — ele será o login do colaborador.');
+        $('#input-email').focus();
+        return;
+      }
+      if (members.some((x) => x.id === email)) {
+        alert('Já existe um colaborador com esse e-mail.');
+        return;
+      }
+      const m = { id: email, email, name, role, scores: {} };
       await Store.save(m);
       members.push(m);
     }
@@ -171,6 +201,9 @@
     const body = $('#evaluate-body');
 
     if (!member) {
+      empty.textContent = canEdit()
+        ? 'Selecione um colaborador para avaliar.'
+        : collaboratorEmptyMessage();
       empty.classList.remove('hidden');
       body.classList.add('hidden');
       return;
@@ -238,7 +271,12 @@
         const dot = document.createElement('button');
         dot.className = 'dot' + (current === v ? ' active' : '');
         dot.textContent = v;
-        dot.addEventListener('click', () => setScore(member, pillar, comp.name, v));
+        if (canEdit()) {
+          dot.addEventListener('click', () => setScore(member, pillar, comp.name, v));
+        } else {
+          dot.disabled = true; // colaborador apenas visualiza
+          dot.title = 'Somente leitura';
+        }
         controls.appendChild(dot);
       }
 
@@ -275,34 +313,37 @@
 
     const labels = Model.compNames(pillar);
     const memberData = Model.memberScoresByCompetency(member, pillar);
-    const teamData = Model.teamAverageByCompetency(members, pillar, member.id);
+
+    const datasets = [];
+    // Marca d'água (média do time) só aparece para o líder: o colaborador, por
+    // segurança, só pode ler o próprio documento — não teria os dados do time.
+    if (canEdit() && members.length > 1) {
+      datasets.push({
+        label: 'Média do time',
+        data: Model.teamAverageByCompetency(members, pillar, member.id),
+        backgroundColor: 'rgba(148, 163, 184, 0.15)',
+        borderColor: 'rgba(148, 163, 184, 0.55)',
+        borderWidth: 1,
+        borderDash: [4, 4],
+        pointRadius: 2,
+        pointBackgroundColor: 'rgba(148, 163, 184, 0.6)',
+      });
+    }
+    datasets.push({
+      label: member.name,
+      data: memberData,
+      backgroundColor: hexToRgba(pillar.color, 0.25),
+      borderColor: pillar.color,
+      borderWidth: 2,
+      pointRadius: 3,
+      pointBackgroundColor: pillar.color,
+    });
 
     radarCharts[pillar.id] = new Chart(canvas, {
       type: 'radar',
       data: {
         labels,
-        datasets: [
-          {
-            // marca d'água: média do restante do time, em cinza claro
-            label: 'Média do time',
-            data: teamData,
-            backgroundColor: 'rgba(148, 163, 184, 0.15)',
-            borderColor: 'rgba(148, 163, 184, 0.55)',
-            borderWidth: 1,
-            borderDash: [4, 4],
-            pointRadius: 2,
-            pointBackgroundColor: 'rgba(148, 163, 184, 0.6)',
-          },
-          {
-            label: member.name,
-            data: memberData,
-            backgroundColor: hexToRgba(pillar.color, 0.25),
-            borderColor: pillar.color,
-            borderWidth: 2,
-            pointRadius: 3,
-            pointBackgroundColor: pillar.color,
-          },
-        ],
+        datasets,
       },
       options: {
         responsive: true,
@@ -521,10 +562,115 @@
     if (e.target.id === 'member-modal') closeMemberModal();
   });
 
-  async function init() {
-    updateStorageBadge();
-    await reloadAndRender();
+  // --------------------------- Papel / UI ----------------------------------
+  // Mostra/esconde recursos de edição conforme o papel do usuário.
+  function applyRoleToUI() {
+    const leader = canEdit();
+    // botão de cadastrar colaborador só para líderes
+    $('#btn-add-member').classList.toggle('hidden', !leader);
+    // o seletor de colaborador na aba Avaliação só faz sentido para líder
+    $('#member-select').classList.toggle('hidden', !leader);
+
+    // rótulo do usuário na sidebar
+    const user = Store.currentUser;
+    $('#user-email').textContent = user ? user.email : '—';
+    $('#user-role').textContent = leader ? 'Líder' : 'Colaborador';
   }
 
-  init();
+  // --------------------------- Autenticação --------------------------------
+  const loginScreen = $('#login-screen');
+  const bootScreen = $('#boot-screen');
+  const appShell = $('#app-shell');
+
+  function showBoot() {
+    bootScreen.classList.remove('hidden');
+    loginScreen.classList.add('hidden');
+    appShell.classList.add('hidden');
+  }
+  function showLogin() {
+    bootScreen.classList.add('hidden');
+    loginScreen.classList.remove('hidden');
+    appShell.classList.add('hidden');
+  }
+  function showApp() {
+    bootScreen.classList.add('hidden');
+    loginScreen.classList.add('hidden');
+    appShell.classList.remove('hidden');
+  }
+
+  // Formulário de login
+  $('#login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = $('#login-email').value.trim();
+    const password = $('#login-password').value;
+    const errEl = $('#login-error');
+    const btn = $('#login-submit');
+    errEl.classList.add('hidden');
+    btn.disabled = true;
+    btn.textContent = 'Entrando…';
+    try {
+      await Store.login(email, password);
+      // o onAuth cuida de carregar o app
+    } catch (err) {
+      errEl.textContent = friendlyAuthError(err);
+      errEl.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Entrar';
+    }
+  });
+
+  $('#btn-logout').addEventListener('click', async () => {
+    await Store.logout();
+  });
+
+  function friendlyAuthError(err) {
+    const code = err && err.code ? err.code : '';
+    switch (code) {
+      case 'auth/invalid-credential':
+      case 'auth/wrong-password':
+      case 'auth/user-not-found':
+        return 'E-mail ou senha incorretos.';
+      case 'auth/invalid-email':
+        return 'E-mail inválido.';
+      case 'auth/too-many-requests':
+        return 'Muitas tentativas. Tente novamente em alguns minutos.';
+      case 'auth/network-request-failed':
+        return 'Falha de rede. Verifique sua conexão.';
+      default:
+        return 'Não foi possível entrar. ' + (err?.message || '');
+    }
+  }
+
+  // --------------------------- Bootstrap -----------------------------------
+  function boot() {
+    updateStorageBadge();
+
+    if (Store.mode === 'local') {
+      // Sem Firebase: entra direto como líder local (modo de desenvolvimento)
+      applyRoleToUI();
+      showApp();
+      reloadAndRender();
+      return;
+    }
+
+    // Firebase: aguarda o estado de autenticação
+    showBoot();
+    Store.onAuth(async (user) => {
+      if (!user) {
+        showLogin();
+        return;
+      }
+      applyRoleToUI();
+      // colaborador abre direto na própria avaliação
+      if (!canEdit()) {
+        selectedId = Store.emailToId(user.email);
+        switchView('evaluate');
+      }
+      showApp();
+      await reloadAndRender();
+    });
+  }
+
+  boot();
 })();

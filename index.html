@@ -7,9 +7,40 @@
   <link rel="stylesheet" href="styles.css" />
   <!-- Chart.js para os gráficos de radar e o Nine Box -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Firebase SDK (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
-  <div class="layout">
+  <!-- ========================= TELA DE LOGIN ========================= -->
+  <div id="login-screen" class="login-screen hidden">
+    <form id="login-form" class="login-card">
+      <div class="brand brand-center">
+        <span class="brand-mark">●</span>
+        <h1>Avaliação de Colaboradores</h1>
+      </div>
+      <p class="login-sub">Entre com seu e-mail corporativo.</p>
+      <label class="field">
+        <span>E-mail</span>
+        <input id="login-email" type="email" autocomplete="username" placeholder="voce@stefanini.com" required />
+      </label>
+      <label class="field">
+        <span>Senha</span>
+        <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••" required />
+      </label>
+      <p id="login-error" class="login-error hidden"></p>
+      <button type="submit" id="login-submit" class="btn btn-primary btn-block">Entrar</button>
+    </form>
+  </div>
+
+  <!-- Enquanto o Firebase decide se há sessão ativa -->
+  <div id="boot-screen" class="boot-screen">
+    <div class="spinner"></div>
+    <span>Carregando…</span>
+  </div>
+
+  <div id="app-shell" class="layout hidden">
     <!-- ========================= SIDEBAR ========================= -->
     <aside class="sidebar">
       <div class="brand">
@@ -28,6 +59,11 @@
         </button>
       </nav>
       <div class="sidebar-footer">
+        <div class="user-box">
+          <div class="user-email" id="user-email">—</div>
+          <div class="user-role" id="user-role">—</div>
+        </div>
+        <button id="btn-logout" class="btn btn-block">Sair</button>
         <span id="storage-badge" class="badge badge-local">Modo Local</span>
       </div>
     </aside>
@@ -102,6 +138,10 @@
       <label class="field">
         <span>Nome</span>
         <input id="input-name" type="text" placeholder="Ex: Maria Silva" />
+      </label>
+      <label class="field">
+        <span>E-mail (login do colaborador)</span>
+        <input id="input-email" type="email" placeholder="maria@stefanini.com" />
       </label>
       <label class="field">
         <span>Cargo / Função</span>
