@@ -1,7 +1,0 @@
-{
-  "task_id": "task-avaliacao-trimestral",
-  "task_description": "Implement quarterly evaluation cycles (periods) in the static employee-evaluation web app. Version member.scores/member.plan under member.periods['YYYY-Qn'], migrate legacy members lazily and non-destructively on read/write, add a global quarter selector that drives the Avaliação/Nine Box/Plano views, adapt all model calculations to operate on the selected period, and add a new 'Evolução' tab with a Chart.js line chart of the three pillar averages per quarter. No frameworks/build/npm/ES modules; keep IIFE globals window.Model and window.Store; keep the dark theme; do not touch firebase-config.js or firestore.rules.",
-  "status": "completed",
-  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003"],
-  "blocked_reason": null
-}

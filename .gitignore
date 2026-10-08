@@ -21,3 +21,7 @@ firebase-debug.log
 # NÃO ignore firebase-config.js:
 # a config do Firebase é pública por natureza (identifica o projeto, não é segredo).
 # A segurança real vem das Security Rules no servidor, não de esconder esse arquivo.
+
+# Artefatos de workflows de desenvolvimento (planos, revisões) e worktrees
+.agents/
+.worktrees/
