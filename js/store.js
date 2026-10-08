@@ -78,6 +78,60 @@
     return norm(email);
   }
 
+  // --- Período trimestral ----------------------------------------------------
+  // Chave de período no formato 'YYYY-Qn' (Q1=Jan-Mar, Q2=Abr-Jun,
+  // Q3=Jul-Set, Q4=Out-Dez). Usada para separar as avaliações por trimestre.
+  function periodKeyFor(date) {
+    const d = date instanceof Date ? date : new Date();
+    return d.getFullYear() + '-Q' + (Math.floor(d.getMonth() / 3) + 1);
+  }
+
+  // Chave do trimestre atual (baseada na data de hoje).
+  function currentPeriodKey() {
+    return periodKeyFor(new Date());
+  }
+
+  // --- Migração preguiçosa e NÃO destrutiva (contrato) -----------------------
+  // Membros legados guardam { scores, plan } na raiz do doc. Para suportar
+  // avaliação trimestral passamos a guardar member.periods['YYYY-Qn'] =
+  // { scores, plan }. Esta migração acontece "on read": quando um membro ainda
+  // não tem .periods, criamos periods[trimestreAtual] copiando os campos de
+  // raiz. Características do contrato:
+  //   - IDEMPOTENTE: se member.periods já existe, o membro é devolvido intacto.
+  //   - NÃO DESTRUTIVA em leitura: os campos legados scores/plan da raiz NÃO
+  //     são apagados aqui (seguro em leituras puras). A remoção dos campos de
+  //     raiz só ocorre na gravação (ver prepareForWrite).
+  //   - Mutação IN PLACE: o próprio objeto recebido ganha .periods, de modo que
+  //     o membro em memória no app.js também passa a enxergar os períodos.
+  function migrateOnRead(member) {
+    if (!member) return member;
+    if (!member.periods) {
+      member.periods = {};
+      member.periods[currentPeriodKey()] = {
+        scores: member.scores || {},
+        plan: member.plan || [],
+      };
+    }
+    return member;
+  }
+
+  // Prepara o payload de gravação a partir de um membro já migrado.
+  // Como o save do Firebase usa { merge:true }, campos de raiz obsoletos
+  // (scores/plan) precisam ser explicitamente removidos com
+  // firebase.firestore.FieldValue.delete(); no modo local basta omiti-los.
+  function prepareForWrite(member, mode) {
+    migrateOnRead(member);
+    const payload = Object.assign({}, member);
+    if (mode === 'firebase') {
+      payload.scores = firebase.firestore.FieldValue.delete();
+      payload.plan = firebase.firestore.FieldValue.delete();
+    } else {
+      delete payload.scores;
+      delete payload.plan;
+    }
+    return payload;
+  }
+
   // ==========================================================================
   //  MODO LOCAL (fallback de desenvolvimento, sem login)
   // ==========================================================================
@@ -111,13 +165,17 @@
     },
     async logout() {},
     async list() {
-      return this._read();
+      // migração preguiçosa: cada membro lido ganha .periods se ainda não tiver
+      return this._read().map(migrateOnRead);
     },
     async save(member) {
+      // migra em memória (member ganha .periods) e grava a versão sem os
+      // campos legados de raiz (scores/plan) — ver prepareForWrite.
+      const payload = prepareForWrite(member, 'local');
       const members = this._read();
-      const idx = members.findIndex((m) => m.id === member.id);
-      if (idx >= 0) members[idx] = member;
-      else members.push(member);
+      const idx = members.findIndex((m) => m.id === payload.id);
+      if (idx >= 0) members[idx] = payload;
+      else members.push(payload);
       this._write(members);
       return member;
     },
@@ -205,14 +263,16 @@
         if (!current) return [];
         if (current.isLeader) {
           const snap = await col.get();
-          return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          // migração preguiçosa em cada doc lido (ver migrateOnRead)
+          return snap.docs.map((d) => migrateOnRead({ id: d.id, ...d.data() }));
         }
         const doc = await col.doc(emailToId(current.email)).get();
-        return doc.exists ? [{ id: doc.id, ...doc.data() }] : [];
+        return doc.exists ? [migrateOnRead({ id: doc.id, ...doc.data() })] : [];
       },
 
       async save(member) {
-        await col.doc(member.id).set(member, { merge: true });
+        // grava o membro migrado e remove os campos legados de raiz do doc
+        await col.doc(member.id).set(prepareForWrite(member, 'firebase'), { merge: true });
         return member;
       },
 
@@ -250,4 +310,6 @@
   window.Store.isBootstrapLeader = isBootstrapLeader;
   window.Store.emailToId = emailToId;
   window.Store.normEmail = norm;
+  window.Store.currentPeriodKey = currentPeriodKey;
+  window.Store.periodKeyFor = periodKeyFor;
 })();

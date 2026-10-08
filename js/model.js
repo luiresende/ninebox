@@ -83,10 +83,27 @@
 
   // --- Helpers --------------------------------------------------------------
 
+  // Resolve as notas de um colaborador para um trimestre específico.
+  // Se houver member.periods[periodKey].scores, usa-o; caso contrário cai no
+  // RETROCOMPAT: as notas legadas no topo (member.scores). Assim, chamadas com
+  // periodKey undefined (como as atuais da UI) continuam funcionando como antes.
+  function periodScores(member, periodKey) {
+    if (
+      member &&
+      member.periods &&
+      periodKey &&
+      member.periods[periodKey] &&
+      member.periods[periodKey].scores
+    ) {
+      return member.periods[periodKey].scores;
+    }
+    return (member && member.scores) || {};
+  }
+
   // Média das notas de um pilar para um colaborador. Competências sem nota
   // contam como 0 para não inflar o resultado de quem não foi avaliado.
-  function pillarAverage(member, pillar) {
-    const scores = (member.scores && member.scores[pillar.id]) || {};
+  function pillarAverage(member, pillar, periodKey) {
+    const scores = periodScores(member, periodKey)[pillar.id] || {};
     const total = compNames(pillar).reduce((sum, comp) => {
       const v = Number(scores[comp]);
       return sum + (Number.isFinite(v) ? v : 0);
@@ -96,12 +113,12 @@
 
   // Média do time (todos os membros exceto o informado) por competência,
   // para desenhar a "marca d'água" de comparação no radar.
-  function teamAverageByCompetency(members, pillar, excludeId) {
+  function teamAverageByCompetency(members, pillar, excludeId, periodKey) {
     const others = members.filter((m) => m.id !== excludeId);
     return compNames(pillar).map((comp) => {
       if (others.length === 0) return 0;
       const sum = others.reduce((acc, m) => {
-        const v = Number(m.scores?.[pillar.id]?.[comp]);
+        const v = Number(periodScores(m, periodKey)?.[pillar.id]?.[comp]);
         return acc + (Number.isFinite(v) ? v : 0);
       }, 0);
       return sum / others.length;
@@ -109,27 +126,27 @@
   }
 
   // Notas do colaborador em um pilar, na ordem das competências.
-  function memberScoresByCompetency(member, pillar) {
-    const scores = (member.scores && member.scores[pillar.id]) || {};
+  function memberScoresByCompetency(member, pillar, periodKey) {
+    const scores = periodScores(member, periodKey)[pillar.id] || {};
     return compNames(pillar).map((comp) => {
       const v = Number(scores[comp]);
       return Number.isFinite(v) ? v : 0;
     });
   }
 
-  function weightedAxis(member, weights) {
+  function weightedAxis(member, weights, periodKey) {
     return PILLARS.reduce((acc, pillar) => {
       const w = weights[pillar.id] || 0;
-      return acc + w * pillarAverage(member, pillar);
+      return acc + w * pillarAverage(member, pillar, periodKey);
     }, 0);
   }
 
-  function performanceScore(member) {
-    return weightedAxis(member, PERFORMANCE_WEIGHTS);
+  function performanceScore(member, periodKey) {
+    return weightedAxis(member, PERFORMANCE_WEIGHTS, periodKey);
   }
 
-  function potentialScore(member) {
-    return weightedAxis(member, POTENTIAL_WEIGHTS);
+  function potentialScore(member, periodKey) {
+    return weightedAxis(member, POTENTIAL_WEIGHTS, periodKey);
   }
 
   // Converte uma nota (1..5) em faixa baixa/média/alta (0,1,2).
@@ -165,14 +182,14 @@
     ],
   ];
 
-  function nineBoxCell(member) {
-    const p = band(potentialScore(member)); // linha (0=baixo .. 2=alto)
-    const d = band(performanceScore(member)); // coluna
+  function nineBoxCell(member, periodKey) {
+    const p = band(potentialScore(member, periodKey)); // linha (0=baixo .. 2=alto)
+    const d = band(performanceScore(member, periodKey)); // coluna
     return NINE_BOX[p][d];
   }
 
-  function nineBoxLabel(member) {
-    return nineBoxCell(member).name;
+  function nineBoxLabel(member, periodKey) {
+    return nineBoxCell(member, periodKey).name;
   }
 
   window.Model = {
@@ -182,6 +199,7 @@
     PILLARS,
     NINE_BOX,
     compNames,
+    periodScores,
     pillarAverage,
     teamAverageByCompetency,
     memberScoresByCompetency,
