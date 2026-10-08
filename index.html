@@ -11,6 +11,11 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script>
+    // Marca se o SDK do Firebase ficou disponível logo após as tags acima.
+    // Se false, os scripts de gstatic.com foram bloqueados pela rede/proxy.
+    window.__FIREBASE_SDK_LOADED__ = (typeof firebase !== 'undefined');
+  </script>
 </head>
 <body>
   <!-- ========================= TELA DE LOGIN ========================= -->

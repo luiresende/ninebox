@@ -37,8 +37,40 @@
     );
   }
 
-  const useFirebase =
-    configLooksReal(window.FIREBASE_CONFIG) && typeof window.firebase !== 'undefined';
+  const configOk = configLooksReal(window.FIREBASE_CONFIG);
+  const sdkOk = typeof window.firebase !== 'undefined';
+  const useFirebase = configOk && sdkOk;
+
+  // Diagnóstico: deixa claro no console por que o modo foi escolhido.
+  console.log(
+    '[Store] config real?', configOk,
+    '| SDK Firebase carregado?', sdkOk,
+    '| modo =', useFirebase ? 'FIREBASE' : 'LOCAL'
+  );
+  if (configOk && !sdkOk) {
+    console.error(
+      '[Store] A config do Firebase está preenchida, mas o SDK (window.firebase) ' +
+      'NÃO carregou. Provável bloqueio de rede ao baixar os scripts de ' +
+      'https://www.gstatic.com/firebasejs/... ou os <script> não vieram antes de store.js.'
+    );
+  }
+
+  // Diagnóstico VISÍVEL na tela (independe do DevTools/F12, que pode estar
+  // bloqueado em rede corporativa). Mostra uma faixa no topo quando a config
+  // está certa mas o SDK não carregou.
+  window.STORE_DIAG = { configOk, sdkOk, useFirebase };
+  if (configOk && !sdkOk) {
+    window.addEventListener('DOMContentLoaded', function () {
+      var bar = document.createElement('div');
+      bar.style.cssText =
+        'position:fixed;top:0;left:0;right:0;z-index:9999;background:#dc2626;color:#fff;' +
+        'padding:12px 16px;font:13px/1.4 Segoe UI,sans-serif;text-align:center';
+      bar.textContent =
+        'Firebase não carregou (SDK bloqueado pela rede). O app está em modo local. ' +
+        'Os scripts de gstatic.com/firebasejs foram bloqueados pelo navegador/proxy.';
+      document.body.appendChild(bar);
+    });
+  }
 
   // id de documento = e-mail normalizado (decisão de modelagem acordada)
   function emailToId(email) {

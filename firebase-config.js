@@ -1,21 +1,18 @@
 // ============================================================================
 // CONFIGURAÇÃO DO FIREBASE
 // ============================================================================
-// 1. Acesse https://console.firebase.google.com e crie um projeto.
-// 2. Em "Configurações do projeto" > "Seus apps", crie um app Web (ícone </>).
-// 3. Copie o objeto de configuração e cole substituindo os valores abaixo.
-// 4. No menu "Firestore Database", crie o banco (pode iniciar em modo de teste).
-//
-// Enquanto os valores estiverem como "COLE_AQUI_...", o app roda em MODO LOCAL
-// (salva os dados apenas no navegador via localStorage). Assim você consegue
-// testar tudo antes de plugar o Firebase.
+// Projeto: ninebox-804e4
+// Estes valores NÃO são secretos: identificam o projeto no cliente. O controle
+// de acesso real é feito pelas Security Rules do Firestore (ver firestore.rules)
+// e pelo Firebase Authentication, não por esconder esta config.
 // ============================================================================
 
 window.FIREBASE_CONFIG = {
-  apiKey: "COLE_AQUI_SUA_API_KEY",
-  authDomain: "COLE_AQUI_SEU_PROJETO.firebaseapp.com",
-  projectId: "COLE_AQUI_SEU_PROJECT_ID",
-  storageBucket: "COLE_AQUI_SEU_PROJETO.appspot.com",
-  messagingSenderId: "COLE_AQUI_SEU_SENDER_ID",
-  appId: "COLE_AQUI_SEU_APP_ID"
+  apiKey: "AIzaSyAyNUNUepd4HSEXCP2yTzlSB8X9_LAdhMg",
+  authDomain: "ninebox-804e4.firebaseapp.com",
+  projectId: "ninebox-804e4",
+  storageBucket: "ninebox-804e4.firebasestorage.app",
+  messagingSenderId: "1042586413354",
+  appId: "1:1042586413354:web:f9e2a529912bf569e41653",
+  measurementId: "G-48PKESCBK5"
 };
