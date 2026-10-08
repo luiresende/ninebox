@@ -621,6 +621,30 @@
         });
       }
       row.appendChild(sel);
+
+      // Botão excluir o papel (volta ao padrão Colaborador). Bloqueado p/ o próprio.
+      const del = document.createElement('button');
+      del.className = 'btn btn-danger';
+      del.textContent = 'Excluir';
+      if (isMe) {
+        del.disabled = true;
+        del.title = 'Você não pode excluir o próprio papel.';
+      } else {
+        del.addEventListener('click', async () => {
+          if (
+            !confirm(
+              'Excluir o papel de ' + email + '?\n\n' +
+                'Isso remove a classificação (ela volta a Colaborador padrão). ' +
+                'O login e a avaliação da pessoa NÃO são apagados.'
+            )
+          )
+            return;
+          await Store.removeRole(email);
+          await renderUsers();
+        });
+      }
+      row.appendChild(del);
+
       list.appendChild(row);
     });
   }

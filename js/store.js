@@ -129,6 +129,7 @@
       return [];
     },
     async setRole() {},
+    async removeRole() {},
   };
 
   // ==========================================================================
@@ -231,6 +232,12 @@
       async setRole(email, role) {
         const id = emailToId(email);
         await rolesCol.doc(id).set({ role, email: id, updatedAt: Date.now() }, { merge: true });
+      },
+
+      // Remove o papel de um e-mail (volta ao padrão Colaborador).
+      // NÃO apaga o login (Authentication) nem a avaliação (members).
+      async removeRole(email) {
+        await rolesCol.doc(emailToId(email)).delete();
       },
     };
 
