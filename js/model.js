@@ -84,18 +84,18 @@
   // --- Helpers --------------------------------------------------------------
 
   // Resolve as notas de um colaborador para um trimestre específico.
-  // Se houver member.periods[periodKey].scores, usa-o; caso contrário cai no
-  // RETROCOMPAT: as notas legadas no topo (member.scores). Assim, chamadas com
-  // periodKey undefined (como as atuais da UI) continuam funcionando como antes.
+  // Regras (importante para a costura migração × navegação por trimestre):
+  //   1. Se o membro já tem .periods (sempre após migrateOnRead no Store.list),
+  //      a verdade é por período: usa member.periods[periodKey].scores quando
+  //      existe; caso contrário o trimestre está VAZIO (não "vaza" as notas de
+  //      raiz do legado para trimestres onde a pessoa não foi avaliada).
+  //   2. RETROCOMPAT: só quando o membro ainda NÃO tem .periods (objeto nunca
+  //      migrado) é que caímos nas notas legadas de raiz (member.scores). Isso
+  //      mantém chamadas antigas/sintéticas funcionando sem o passo de migração.
   function periodScores(member, periodKey) {
-    if (
-      member &&
-      member.periods &&
-      periodKey &&
-      member.periods[periodKey] &&
-      member.periods[periodKey].scores
-    ) {
-      return member.periods[periodKey].scores;
+    if (member && member.periods) {
+      const p = periodKey && member.periods[periodKey];
+      return (p && p.scores) || {};
     }
     return (member && member.scores) || {};
   }
