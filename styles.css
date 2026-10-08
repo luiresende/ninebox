@@ -496,42 +496,114 @@ body {
 .obj-actions { margin-top: 10px; }
 
 /* ----------------------------- Tutorial --------------------------------- */
-.tutorial-body {
+.tutorial-body { display: flex; flex-direction: column; gap: 16px; }
+
+/* duas colunas que colapsam em telas estreitas */
+.tut-grid-2 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
-.tut-card {
+@media (max-width: 900px) {
+  .tut-grid-2 { grid-template-columns: 1fr; }
+}
+
+.tut-section {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 18px 20px;
+  padding: 20px 22px;
 }
-.tut-card h3 { margin: 0 0 10px; font-size: 16px; }
-.tut-card p { margin: 0 0 8px; font-size: 14px; color: #cbd5e1; }
-.tut-card em { color: #e2e8f0; font-style: normal; font-weight: 600; }
+.tut-section > p { margin: 0 0 8px; font-size: 14px; color: #cbd5e1; }
+.tut-section em { color: #e2e8f0; font-style: normal; font-weight: 600; }
 
-.tut-pillars { display: flex; gap: 10px; flex-wrap: wrap; }
+.tut-sec-head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.tut-sec-head h3 { margin: 0; font-size: 16px; }
+.tut-ico {
+  font-size: 18px;
+  width: 32px; height: 32px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-2);
+  border-radius: 8px;
+}
+
+.tut-intro { background: linear-gradient(135deg, #1e293b, #243249); }
+.tut-note {
+  margin: 12px 0 0;
+  font-size: 13px; color: var(--muted);
+  border-left: 3px solid var(--primary);
+  padding-left: 12px;
+}
+
+/* pilares — grade uniforme */
+.tut-pillars {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+@media (max-width: 520px) { .tut-pillars { grid-template-columns: 1fr; } }
 .tut-pillar {
-  flex: 1; min-width: 120px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-top: 3px solid var(--border);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 12px;
 }
 .tut-pillar-name { font-weight: 700; font-size: 14px; }
-.tut-pillar-sub { font-size: 12px; color: var(--muted); }
+.tut-pillar-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
-.scale-list { display: flex; flex-direction: column; gap: 10px; }
-.scale-row { display: flex; align-items: flex-start; gap: 12px; }
+/* escala de notas — linhas alinhadas */
+.scale-list { display: flex; flex-direction: column; }
+.scale-row {
+  display: flex; align-items: flex-start; gap: 14px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.scale-row:first-child { border-top: none; }
 .scale-num {
   flex-shrink: 0;
-  width: 30px; height: 30px;
+  width: 32px; height: 32px;
   display: flex; align-items: center; justify-content: center;
   background: var(--primary); color: #fff;
   border-radius: 8px; font-weight: 800;
 }
 .scale-name { font-weight: 700; font-size: 14px; }
-.scale-desc { font-size: 13px; color: var(--muted); }
+.scale-desc { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+/* Nine Box — eixos lado a lado */
+.tut-axes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+@media (max-width: 520px) { .tut-axes { grid-template-columns: 1fr; } }
+.tut-axis {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.tut-axis-label { font-weight: 700; font-size: 13px; margin-bottom: 4px; color: #e2e8f0; }
+.tut-axis p { margin: 0; font-size: 13px; color: var(--muted); }
+
+/* papéis de acesso */
+.tut-roles { display: flex; flex-direction: column; gap: 12px; }
+.tut-role {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.tut-role p { margin: 8px 0 0; font-size: 13px; color: #cbd5e1; }
+.tut-role-badge {
+  display: inline-block;
+  font-size: 12px; font-weight: 700;
+  padding: 3px 10px; border-radius: 999px;
+}

@@ -961,46 +961,71 @@
         </div>`
     ).join('');
 
+    const roleCards = `
+      <div class="tut-role">
+        <span class="tut-role-badge role-leader">Líder</span>
+        <p>Vê e avalia todos os colaboradores, gerencia papéis de acesso e os planos de desenvolvimento.</p>
+      </div>
+      <div class="tut-role">
+        <span class="tut-role-badge role-collab">Colaborador</span>
+        <p>Vê apenas a própria avaliação e o próprio plano de desenvolvimento, em modo leitura.</p>
+      </div>`;
+
     body.innerHTML = `
-      <div class="tut-card">
-        <h3>O que é este app</h3>
-        <p>Uma ferramenta para avaliar colaboradores em três pilares, comparar com a média
-        do time e posicioná-los numa matriz <strong>Nine Box</strong> (Potencial × Desempenho),
-        além de acompanhar um <strong>Plano de Desenvolvimento</strong> individual.</p>
+      <!-- Introdução em largura total -->
+      <section class="tut-section tut-intro">
+        <div class="tut-sec-head"><span class="tut-ico">📊</span><h3>O que é este app</h3></div>
+        <p>Uma ferramenta para <strong>avaliar colaboradores</strong> em três pilares, comparar cada
+        pessoa com a média do time e posicioná-la numa matriz <strong>Nine Box</strong>
+        (Potencial × Desempenho). Também permite acompanhar um
+        <strong>Plano de Desenvolvimento</strong> individual para evoluir as notas.</p>
+      </section>
+
+      <!-- Linha: pilares + escala -->
+      <div class="tut-grid-2">
+        <section class="tut-section">
+          <div class="tut-sec-head"><span class="tut-ico">🧱</span><h3>Os 3 pilares</h3></div>
+          <div class="tut-pillars">${pillarCards}</div>
+          <p class="tut-note">Cada pilar reúne competências avaliadas de 1 a 5. A média das
+          competências forma a nota do pilar.</p>
+        </section>
+
+        <section class="tut-section">
+          <div class="tut-sec-head"><span class="tut-ico">🔢</span><h3>Escala de notas</h3></div>
+          <div class="scale-list">${scaleRows}</div>
+        </section>
       </div>
 
-      <div class="tut-card">
-        <h3>Os 3 pilares</h3>
-        <div class="tut-pillars">${pillarCards}</div>
-        <p style="margin-top:12px">Cada pilar tem competências avaliadas de 1 a 5. A média
-        das competências forma a nota do pilar.</p>
-      </div>
+      <!-- Nine Box em largura total, com os dois eixos lado a lado -->
+      <section class="tut-section">
+        <div class="tut-sec-head"><span class="tut-ico">🎯</span><h3>Desempenho × Potencial (Nine Box)</h3></div>
+        <div class="tut-axes">
+          <div class="tut-axis">
+            <div class="tut-axis-label">Desempenho — eixo horizontal</div>
+            <p>O que a pessoa entrega hoje, calculado pela média de <em>HardSkill</em> e <em>Disciplina</em>.</p>
+          </div>
+          <div class="tut-axis">
+            <div class="tut-axis-label">Potencial — eixo vertical</div>
+            <p>Capacidade de crescer e liderar, vinda do pilar <em>SoftSkill</em> (Leadership Principles).</p>
+          </div>
+        </div>
+        <p class="tut-note">O cruzamento dos dois eixos posiciona a pessoa em um dos 9 quadrantes.
+        A explicação de cada quadrante está na aba <strong>Nine Box</strong>.</p>
+      </section>
 
-      <div class="tut-card">
-        <h3>Escala de notas (1 a 5)</h3>
-        <div class="scale-list">${scaleRows}</div>
-      </div>
+      <!-- Linha: PDI + papéis -->
+      <div class="tut-grid-2">
+        <section class="tut-section">
+          <div class="tut-sec-head"><span class="tut-ico">📈</span><h3>Plano de Desenvolvimento</h3></div>
+          <p>Para cada colaborador, o líder cadastra <strong>objetivos</strong>, cada um com suas
+          <strong>tarefas</strong>. Ao concluir as tarefas, o progresso do objetivo sobe até
+          <strong>100%</strong> quando todas estão feitas — o caminho prático para melhorar as notas.</p>
+        </section>
 
-      <div class="tut-card">
-        <h3>Desempenho × Potencial (Nine Box)</h3>
-        <p><strong>Desempenho</strong> (eixo horizontal) = o que a pessoa entrega hoje,
-        calculado pela média de <em>HardSkill</em> e <em>Disciplina</em>.</p>
-        <p><strong>Potencial</strong> (eixo vertical) = capacidade de crescer e liderar,
-        vindo do pilar <em>SoftSkill</em> (Leadership Principles). O cruzamento posiciona a
-        pessoa em um dos 9 quadrantes — a explicação de cada um está na aba <strong>Nine Box</strong>.</p>
-      </div>
-
-      <div class="tut-card">
-        <h3>Plano de Desenvolvimento</h3>
-        <p>Para cada colaborador, o líder cadastra <strong>objetivos</strong> com <strong>tarefas</strong>.
-        Ao marcar as tarefas concluídas, o progresso do objetivo sobe até 100% quando todas
-        estão feitas. É o caminho prático para melhorar as notas da avaliação.</p>
-      </div>
-
-      <div class="tut-card">
-        <h3>Papéis de acesso</h3>
-        <p><strong>Líder:</strong> vê e avalia todos, gerencia papéis e os planos de desenvolvimento.</p>
-        <p><strong>Colaborador:</strong> vê apenas a própria avaliação e o próprio plano, em modo leitura.</p>
+        <section class="tut-section">
+          <div class="tut-sec-head"><span class="tut-ico">🔑</span><h3>Papéis de acesso</h3></div>
+          <div class="tut-roles">${roleCards}</div>
+        </section>
       </div>
     `;
     body.dataset.rendered = '1';
