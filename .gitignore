@@ -1,0 +1,23 @@
+# Dependências / artefatos
+node_modules/
+dist/
+build/
+
+# Logs
+*.log
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Editores
+.vscode/
+.idea/
+
+# Firebase (se um dia usar CLI local)
+.firebase/
+firebase-debug.log
+
+# NÃO ignore firebase-config.js:
+# a config do Firebase é pública por natureza (identifica o projeto, não é segredo).
+# A segurança real vem das Security Rules no servidor, não de esconder esse arquivo.

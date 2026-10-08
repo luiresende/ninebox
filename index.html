@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Avaliação de Colaboradores</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Chart.js para os gráficos de radar e o Nine Box -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="layout">
+    <!-- ========================= SIDEBAR ========================= -->
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">●</span>
+        <h1>Avaliação</h1>
+      </div>
+      <nav class="nav">
+        <button class="nav-item active" data-view="team">
+          <span class="nav-icon">👥</span> Time
+        </button>
+        <button class="nav-item" data-view="evaluate">
+          <span class="nav-icon">📝</span> Avaliação
+        </button>
+        <button class="nav-item" data-view="ninebox">
+          <span class="nav-icon">🎯</span> Nine Box
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        <span id="storage-badge" class="badge badge-local">Modo Local</span>
+      </div>
+    </aside>
+
+    <main class="app-main">
+    <!-- ====================== VIEW: TIME ====================== -->
+    <section id="view-team" class="view active">
+      <div class="view-head">
+        <h2>Membros do time</h2>
+        <button id="btn-add-member" class="btn btn-primary">+ Novo colaborador</button>
+      </div>
+      <div id="member-list" class="member-grid"></div>
+      <p id="empty-team" class="empty-state hidden">
+        Nenhum colaborador cadastrado ainda. Clique em <strong>+ Novo colaborador</strong> para começar.
+      </p>
+    </section>
+
+    <!-- ==================== VIEW: AVALIAÇÃO ==================== -->
+    <section id="view-evaluate" class="view">
+      <div class="view-head">
+        <h2>Avaliação</h2>
+        <select id="member-select" class="select"></select>
+      </div>
+
+      <div id="evaluate-empty" class="empty-state">
+        Selecione um colaborador para avaliar.
+      </div>
+
+      <div id="evaluate-body" class="hidden">
+        <div class="scoreboard">
+          <div class="score-card">
+            <span class="score-label">Desempenho</span>
+            <span id="score-performance" class="score-value">—</span>
+          </div>
+          <div class="score-card">
+            <span class="score-label">Potencial</span>
+            <span id="score-potential" class="score-value">—</span>
+          </div>
+          <div class="score-card">
+            <span class="score-label">Nine Box</span>
+            <span id="score-ninebox" class="score-value">—</span>
+          </div>
+        </div>
+
+        <div class="pillars">
+          <!-- As 3 colunas de pilares são injetadas via JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== VIEW: NINE BOX ==================== -->
+    <section id="view-ninebox" class="view">
+      <div class="view-head">
+        <h2>Matriz Nine Box</h2>
+        <span class="hint">Potencial (vertical) × Desempenho (horizontal)</span>
+      </div>
+      <div class="ninebox-wrap">
+        <canvas id="ninebox-chart"></canvas>
+      </div>
+      <div id="ninebox-legend" class="ninebox-legend"></div>
+
+      <h3 class="section-title">O que significa cada quadrante</h3>
+      <div id="ninebox-guide" class="ninebox-guide"></div>
+    </section>
+    </main>
+  </div>
+
+  <!-- ===================== MODAL: COLABORADOR ================= -->
+  <div id="member-modal" class="modal hidden">
+    <div class="modal-card">
+      <h3 id="modal-title">Novo colaborador</h3>
+      <label class="field">
+        <span>Nome</span>
+        <input id="input-name" type="text" placeholder="Ex: Maria Silva" />
+      </label>
+      <label class="field">
+        <span>Cargo / Função</span>
+        <input id="input-role" type="text" placeholder="Ex: Engenheira DevOps" />
+      </label>
+      <div class="modal-actions">
+        <button id="btn-cancel-member" class="btn">Cancelar</button>
+        <button id="btn-delete-member" class="btn btn-danger hidden">Excluir</button>
+        <button id="btn-save-member" class="btn btn-primary">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Config do Firebase (modo local enquanto estiver com placeholders) -->
+  <script src="firebase-config.js"></script>
+  <!-- Camada de dados (localStorage + Firebase opcional) -->
+  <script src="js/store.js"></script>
+  <!-- Modelo: pilares, competências e cálculos -->
+  <script src="js/model.js"></script>
+  <!-- Aplicação -->
+  <script src="js/app.js"></script>
+</body>
+</html>
