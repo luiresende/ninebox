@@ -7,18 +7,19 @@
 //   - MODO LOCAL   : localStorage, apenas como fallback de desenvolvimento
 //                    (sem credenciais / SDK ausente). Sem login nem papéis.
 //
-// Papéis:
-//   - LÍDER      : e-mail está em LEADER_EMAILS. Lê e escreve TODOS os docs.
-//   - COLABORADOR: lê somente o doc cujo ID == o próprio e-mail (sua avaliação).
+// Papéis (agora guardados no Firestore, coleção "roles"):
+//   - LÍDER      : e-mail em BOOTSTRAP_LEADERS OU roles/{email}.role=='leader'.
+//                  Lê e escreve TODOS os docs e gerencia papéis.
+//   - COLABORADOR: lê somente o próprio members/{email} (sua avaliação).
 //
-// IMPORTANTE: a lista abaixo é só pra UI decidir o que mostrar. A segurança de
-// verdade está nas Firestore Security Rules (firestore.rules), no servidor.
-// Mantenha as duas listas em sincronia.
+// O papel vem do servidor. A segurança real está nas Firestore Security Rules
+// (firestore.rules). Mantenha BOOTSTRAP_LEADERS em sincronia com bootstrap() lá.
 // ============================================================================
 
 (function () {
-  // --- Líderes (também replicado em firestore.rules) ------------------------
-  const LEADER_EMAILS = ['lcalmeida4@stefanini.com'];
+  // --- Líder(es) semeado(s) — replicado em firestore.rules bootstrap() ------
+  // Resolve o ovo-e-galinha: sem isso ninguém poderia criar o primeiro papel.
+  const BOOTSTRAP_LEADERS = ['lcalmeida4@stefanini.com'];
 
   const LS_KEY = 'avaliacao.members.v1';
 
@@ -26,8 +27,8 @@
     return (email || '').trim().toLowerCase();
   }
 
-  function isLeaderEmail(email) {
-    return LEADER_EMAILS.map(norm).includes(norm(email));
+  function isBootstrapLeader(email) {
+    return BOOTSTRAP_LEADERS.map(norm).includes(norm(email));
   }
 
   function configLooksReal(cfg) {
@@ -105,6 +106,9 @@
     async login() {
       throw new Error('Login indisponível em modo local.');
     },
+    async signup() {
+      throw new Error('Cadastro indisponível em modo local.');
+    },
     async logout() {},
     async list() {
       return this._read();
@@ -120,6 +124,11 @@
     async remove(id) {
       this._write(this._read().filter((m) => m.id !== id));
     },
+    // Gestão de papéis não se aplica ao modo local (sem Firestore).
+    async listRoles() {
+      return [];
+    },
+    async setRole() {},
   };
 
   // ==========================================================================
@@ -130,11 +139,25 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
     const col = db.collection('members');
+    const rolesCol = db.collection('roles');
 
     // mantém login entre reloads
     auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
 
-    let current = null; // { email, isLeader }
+    let current = null; // { uid, email, isLeader }
+
+    // Resolve o papel do usuário: bootstrap OU doc em roles/{email}.
+    // Default (sem doc e fora do bootstrap) = colaborador.
+    async function resolveIsLeader(email) {
+      if (isBootstrapLeader(email)) return true;
+      try {
+        const doc = await rolesCol.doc(emailToId(email)).get();
+        return doc.exists && doc.data().role === 'leader';
+      } catch (e) {
+        // sem permissão/erro de leitura -> trata como colaborador (seguro)
+        return false;
+      }
+    }
 
     const store = {
       mode: 'firebase',
@@ -145,15 +168,13 @@
         return !!current && current.isLeader;
       },
 
-      // Observa mudanças de login. Chama cb(user|null).
+      // Observa mudanças de login. Chama cb(user|null) APÓS resolver o papel.
       onAuth(cb) {
-        return auth.onAuthStateChanged((fbUser) => {
+        return auth.onAuthStateChanged(async (fbUser) => {
           if (fbUser) {
-            current = {
-              uid: fbUser.uid,
-              email: norm(fbUser.email),
-              isLeader: isLeaderEmail(fbUser.email),
-            };
+            const email = norm(fbUser.email);
+            const isLeader = await resolveIsLeader(email);
+            current = { uid: fbUser.uid, email, isLeader };
           } else {
             current = null;
           }
@@ -163,6 +184,13 @@
 
       async login(email, password) {
         await auth.signInWithEmailAndPassword(norm(email), password);
+      },
+
+      // Auto-cadastro: a pessoa cria a PRÓPRIA conta (permitido no cliente).
+      // Papel inicial = colaborador (não grava em roles; ausência = colaborador).
+      async signup(email, password) {
+        await auth.createUserWithEmailAndPassword(norm(email), password);
+        // onAuthStateChanged assume a partir daqui (já fica logada).
       },
 
       async logout() {
@@ -190,6 +218,20 @@
       async remove(id) {
         await col.doc(id).delete();
       },
+
+      // ----- Gestão de papéis (apenas líder; imposto também nas regras) -----
+      // Retorna todos os papéis gravados: [{ email, role }].
+      async listRoles() {
+        if (!current || !current.isLeader) return [];
+        const snap = await rolesCol.get();
+        return snap.docs.map((d) => ({ email: d.id, role: d.data().role }));
+      },
+
+      // Define o papel de um e-mail. 'leader' | 'collaborator'.
+      async setRole(email, role) {
+        const id = emailToId(email);
+        await rolesCol.doc(id).set({ role, email: id, updatedAt: Date.now() }, { merge: true });
+      },
     };
 
     return store;
@@ -198,7 +240,7 @@
   window.Store = useFirebase ? makeFirebaseStore() : LocalStore;
 
   // helpers expostos
-  window.Store.isLeaderEmail = isLeaderEmail;
+  window.Store.isBootstrapLeader = isBootstrapLeader;
   window.Store.emailToId = emailToId;
   window.Store.normEmail = norm;
 })();

@@ -3,22 +3,29 @@ rules_version = '2';
 // ============================================================================
 // Firestore Security Rules — controle de acesso REAL (lado servidor)
 // ----------------------------------------------------------------------------
-// Modelo:
-//   coleção "members", 1 doc por colaborador, DOC ID = e-mail (minúsculo).
+// Coleções:
+//   members/{email}  -> avaliação do colaborador (notas, nome, cargo).
+//   roles/{email}    -> papel da pessoa: { role: 'leader' | 'collaborator' }.
 //
 // Papéis:
-//   LÍDER       -> e-mail na lista leaders() abaixo. Lê e escreve TUDO.
-//   COLABORADOR -> lê SOMENTE o doc cujo ID == seu próprio e-mail. Não escreve.
+//   LÍDER       -> e-mail no bootstrap() OU com doc roles/{email}.role=='leader'.
+//                  Lê e escreve TUDO (members e roles).
+//   COLABORADOR -> lê SOMENTE o próprio members/{email} e o próprio roles/{email}.
+//                  Não escreve nada.
 //
-// IMPORTANTE: mantenha a lista de líderes em sincronia com LEADER_EMAILS em
-// js/store.js. Aqui é o que vale de verdade; o front-end só reflete.
+// SEGURANÇA ANTI-AUTOPROMOÇÃO: o papel mora em "roles", que só líder escreve.
+// Assim, um colaborador NÃO consegue se tornar líder editando dados próprios.
+//
+// bootstrap(): líder(es) "semeados" para resolver o ovo-e-galinha — sem isso,
+// ninguém jamais poderia escrever o primeiro papel. Mantenha em sincronia com
+// BOOTSTRAP_LEADERS em js/store.js.
 // ============================================================================
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Lista de e-mails de líderes (minúsculo).
-    function leaders() {
+    // Líderes semeados (minúsculo). O 1º líder precisa estar aqui.
+    function bootstrap() {
       return ['lcalmeida4@stefanini.com'];
     }
 
@@ -31,10 +38,23 @@ service cloud.firestore {
       return isSignedIn() ? request.auth.token.email.lower() : '';
     }
 
-    function isLeader() {
-      return isSignedIn() && userEmail() in leaders();
+    // Lê o papel gravado em roles/{email}, se existir.
+    function roleDoc(email) {
+      return get(/databases/$(database)/documents/roles/$(email));
     }
 
+    function hasLeaderRole() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/roles/$(userEmail()))
+        && roleDoc(userEmail()).data.role == 'leader';
+    }
+
+    // Líder = semeado no bootstrap OU com papel 'leader' no Firestore.
+    function isLeader() {
+      return isSignedIn() && (userEmail() in bootstrap() || hasLeaderRole());
+    }
+
+    // ---------------------------- members ----------------------------------
     match /members/{memberId} {
       // Líder lê qualquer doc. Colaborador lê só o doc cujo ID == seu e-mail.
       allow read: if isLeader()
@@ -42,6 +62,15 @@ service cloud.firestore {
 
       // Apenas líderes criam, editam ou excluem avaliações.
       allow create, update, delete: if isLeader();
+    }
+
+    // ----------------------------- roles ------------------------------------
+    match /roles/{email} {
+      // Cada um lê o próprio papel; líder lê todos.
+      allow read: if isLeader() || (isSignedIn() && email == userEmail());
+
+      // SOMENTE líder define/edita/remove papéis. (impede autopromoção)
+      allow write: if isLeader();
     }
   }
 }

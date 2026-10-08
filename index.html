@@ -25,7 +25,7 @@
         <span class="brand-mark">●</span>
         <h1>Avaliação de Colaboradores</h1>
       </div>
-      <p class="login-sub">Entre com seu e-mail corporativo.</p>
+      <p class="login-sub" id="login-sub">Entre com seu e-mail corporativo.</p>
       <label class="field">
         <span>E-mail</span>
         <input id="login-email" type="email" autocomplete="username" placeholder="voce@stefanini.com" required />
@@ -36,6 +36,10 @@
       </label>
       <p id="login-error" class="login-error hidden"></p>
       <button type="submit" id="login-submit" class="btn btn-primary btn-block">Entrar</button>
+      <p class="login-toggle">
+        <span id="login-mode-hint">Ainda não tem conta?</span>
+        <a href="#" id="login-toggle-link">Criar conta</a>
+      </p>
     </form>
   </div>
 
@@ -61,6 +65,9 @@
         </button>
         <button class="nav-item" data-view="ninebox">
           <span class="nav-icon">🎯</span> Nine Box
+        </button>
+        <button class="nav-item" data-view="users" id="nav-users">
+          <span class="nav-icon">🔑</span> Usuários
         </button>
       </nav>
       <div class="sidebar-footer">
@@ -132,6 +139,32 @@
 
       <h3 class="section-title">O que significa cada quadrante</h3>
       <div id="ninebox-guide" class="ninebox-guide"></div>
+    </section>
+
+    <!-- ===================== VIEW: USUÁRIOS ==================== -->
+    <section id="view-users" class="view">
+      <div class="view-head">
+        <h2>Usuários e papéis</h2>
+      </div>
+      <p class="hint" style="margin:-8px 0 18px">
+        Defina quem é <strong>Líder</strong> (acesso total) ou <strong>Colaborador</strong>
+        (vê só a própria avaliação). O login é criado pela própria pessoa na tela de
+        "Criar conta"; aqui você classifica o papel dela.
+      </p>
+
+      <div class="users-add">
+        <input id="role-email" class="select" type="email" placeholder="email@stefanini.com" style="min-width:280px" />
+        <select id="role-select" class="select">
+          <option value="collaborator">Colaborador</option>
+          <option value="leader">Líder</option>
+        </select>
+        <button id="btn-set-role" class="btn btn-primary">Definir papel</button>
+      </div>
+
+      <div id="users-list" class="users-list"></div>
+      <p id="users-empty" class="empty-state hidden">
+        Nenhum papel definido ainda. Por padrão, quem se cadastra entra como Colaborador.
+      </p>
     </section>
     </main>
   </div>

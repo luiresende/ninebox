@@ -36,10 +36,13 @@
 
   // --------------------------- Navegação -----------------------------------
   function switchView(view) {
+    // colaborador não acessa a aba de usuários
+    if (view === 'users' && !canEdit()) view = 'team';
     $$('.nav-item').forEach((t) => t.classList.toggle('active', t.dataset.view === view));
     $$('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + view));
     if (view === 'ninebox') renderNineBox();
     if (view === 'evaluate') renderEvaluate();
+    if (view === 'users') renderUsers();
   }
 
   $$('.nav-item').forEach((tab) => {
@@ -548,6 +551,93 @@
     return ['baixo', 'médio', 'alto'][i];
   }
 
+  // --------------------------- View: Usuários ------------------------------
+  async function renderUsers() {
+    if (!canEdit()) return; // só líder
+    const list = $('#users-list');
+    const empty = $('#users-empty');
+    list.innerHTML = '';
+
+    let roles = [];
+    try {
+      roles = await Store.listRoles();
+    } catch (e) {
+      const perm = e && (e.code === 'permission-denied' || /permission/i.test(e.message || ''));
+      list.innerHTML =
+        '<p class="empty-state">' +
+        (perm
+          ? 'Permissão negada ao ler os papéis. Publique as Security Rules novas ' +
+            '(coleção <strong>roles</strong>) no Firebase Console → Firestore → Rules.'
+          : 'Erro ao carregar papéis: ' + escapeHtml(e?.message || String(e))) +
+        '</p>';
+      return;
+    }
+
+    // Inclui os líderes semeados (bootstrap) na lista, mesmo sem doc em roles.
+    const byEmail = {};
+    roles.forEach((r) => (byEmail[r.email] = r.role));
+    // marca o próprio usuário (bootstrap) como líder se não houver doc
+    const me = Store.currentUser ? Store.currentUser.email : null;
+    if (me && !byEmail[me]) byEmail[me] = 'leader'; // você é líder por bootstrap
+
+    const entries = Object.entries(byEmail).sort((a, b) => a[0].localeCompare(b[0]));
+
+    if (entries.length === 0) {
+      empty.classList.remove('hidden');
+      return;
+    }
+    empty.classList.add('hidden');
+
+    entries.forEach(([email, role]) => {
+      const row = document.createElement('div');
+      row.className = 'user-row';
+      const isMe = email === me;
+      row.innerHTML = `
+        <div class="user-main">
+          <span class="user-email-txt">${escapeHtml(email)}</span>
+          ${isMe ? '<span class="user-you">você</span>' : ''}
+        </div>
+        <span class="role-badge ${role === 'leader' ? 'role-leader' : 'role-collab'}">
+          ${role === 'leader' ? 'Líder' : 'Colaborador'}
+        </span>
+      `;
+      // seletor rápido para trocar o papel (bloqueia alterar o próprio, p/ não
+      // se auto-rebaixar e perder acesso sem querer)
+      const sel = document.createElement('select');
+      sel.className = 'select';
+      sel.innerHTML =
+        '<option value="collaborator">Colaborador</option>' +
+        '<option value="leader">Líder</option>';
+      sel.value = role === 'leader' ? 'leader' : 'collaborator';
+      if (isMe) {
+        sel.disabled = true;
+        sel.title = 'Você não pode alterar o próprio papel.';
+      } else {
+        sel.addEventListener('change', async () => {
+          await Store.setRole(email, sel.value);
+          await renderUsers();
+        });
+      }
+      row.appendChild(sel);
+      list.appendChild(row);
+    });
+  }
+
+  // Botão "Definir papel" (adiciona/atualiza por e-mail digitado)
+  $('#btn-set-role').addEventListener('click', async () => {
+    if (!canEdit()) return;
+    const emailRaw = $('#role-email').value;
+    const email = Store.normEmail ? Store.normEmail(emailRaw) : emailRaw.trim().toLowerCase();
+    const role = $('#role-select').value;
+    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      alert('Informe um e-mail válido.');
+      return;
+    }
+    await Store.setRole(email, role);
+    $('#role-email').value = '';
+    await renderUsers();
+  });
+
   // --------------------------- Ciclo de vida -------------------------------
   async function reloadAndRender() {
     members = await Store.list();
@@ -570,6 +660,8 @@
     $('#btn-add-member').classList.toggle('hidden', !leader);
     // o seletor de colaborador na aba Avaliação só faz sentido para líder
     $('#member-select').classList.toggle('hidden', !leader);
+    // aba de gestão de usuários/papéis só para líderes
+    $('#nav-users').classList.toggle('hidden', !leader);
 
     // rótulo do usuário na sidebar
     const user = Store.currentUser;
@@ -591,6 +683,8 @@
     bootScreen.classList.add('hidden');
     loginScreen.classList.remove('hidden');
     appShell.classList.add('hidden');
+    setAuthMode('login');
+    $('#login-password').value = '';
   }
   function showApp() {
     bootScreen.classList.add('hidden');
@@ -598,7 +692,27 @@
     appShell.classList.remove('hidden');
   }
 
-  // Formulário de login
+  // Alterna entre "Entrar" e "Criar conta"
+  let authMode = 'login'; // 'login' | 'signup'
+  function setAuthMode(mode) {
+    authMode = mode;
+    const isSignup = mode === 'signup';
+    $('#login-sub').textContent = isSignup
+      ? 'Crie sua conta com o e-mail corporativo.'
+      : 'Entre com seu e-mail corporativo.';
+    $('#login-submit').textContent = isSignup ? 'Criar conta' : 'Entrar';
+    $('#login-mode-hint').textContent = isSignup ? 'Já tem conta?' : 'Ainda não tem conta?';
+    $('#login-toggle-link').textContent = isSignup ? 'Entrar' : 'Criar conta';
+    $('#login-password').setAttribute('autocomplete', isSignup ? 'new-password' : 'current-password');
+    $('#login-error').classList.add('hidden');
+  }
+
+  $('#login-toggle-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    setAuthMode(authMode === 'login' ? 'signup' : 'login');
+  });
+
+  // Formulário de login / cadastro
   $('#login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = $('#login-email').value.trim();
@@ -607,16 +721,21 @@
     const btn = $('#login-submit');
     errEl.classList.add('hidden');
     btn.disabled = true;
-    btn.textContent = 'Entrando…';
+    const signup = authMode === 'signup';
+    btn.textContent = signup ? 'Criando…' : 'Entrando…';
     try {
-      await Store.login(email, password);
+      if (signup) {
+        await Store.signup(email, password);
+      } else {
+        await Store.login(email, password);
+      }
       // o onAuth cuida de carregar o app
     } catch (err) {
       errEl.textContent = friendlyAuthError(err);
       errEl.classList.remove('hidden');
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Entrar';
+      btn.textContent = signup ? 'Criar conta' : 'Entrar';
     }
   });
 
@@ -633,12 +752,18 @@
         return 'E-mail ou senha incorretos.';
       case 'auth/invalid-email':
         return 'E-mail inválido.';
+      case 'auth/email-already-in-use':
+        return 'Já existe uma conta com esse e-mail. Use "Entrar".';
+      case 'auth/weak-password':
+        return 'Senha muito fraca (mínimo 6 caracteres).';
+      case 'auth/operation-not-allowed':
+        return 'Cadastro por e-mail/senha não está habilitado no Firebase.';
       case 'auth/too-many-requests':
         return 'Muitas tentativas. Tente novamente em alguns minutos.';
       case 'auth/network-request-failed':
         return 'Falha de rede. Verifique sua conexão.';
       default:
-        return 'Não foi possível entrar. ' + (err?.message || '');
+        return 'Não foi possível concluir. ' + (err?.message || '');
     }
   }
 
