@@ -12,6 +12,10 @@
   const radarCharts = {}; // pillarId -> Chart
   let nineBoxChart = null;
 
+  // Trimestre selecionado globalmente (Avaliação, Nine Box e Plano compartilham
+  // o mesmo trimestre). Começa no trimestre atual; o usuário navega com a barra.
+  let selectedPeriod = Store.currentPeriodKey();
+
   // Papel do usuário logado. Líder edita; colaborador só visualiza o próprio.
   function canEdit() {
     return Store.isLeader();
@@ -32,6 +36,73 @@
 
   function fmt(n) {
     return Number.isFinite(n) ? n.toFixed(2) : '—';
+  }
+
+  // --------------------------- Trimestre -----------------------------------
+  // Soma/subtrai 'delta' trimestres a uma chave 'YYYY-Qn' e retorna a nova chave.
+  // Trata a virada de ano (Q4 -> Q1 do ano seguinte, e vice-versa).
+  function shiftPeriod(key, delta) {
+    const [y, q] = key.split('-Q').map(Number);
+    const idx = y * 4 + (q - 1) + delta;
+    const ny = Math.floor(idx / 4);
+    const nq = (idx % 4) + 1;
+    return ny + '-Q' + nq;
+  }
+
+  // Troca o trimestre selecionado e re-renderiza a view ativa (as três views que
+  // dependem do trimestre: Avaliação, Nine Box e Plano) para refletir os dados.
+  function setSelectedPeriod(key) {
+    selectedPeriod = key;
+    const v = $('.nav-item.active')?.dataset.view;
+    if (v === 'evaluate') renderEvaluate();
+    else if (v === 'ninebox') renderNineBox();
+    else if (v === 'plan') renderPlan();
+    else if (v === 'evolution') {
+      /* FEAT-003: aba Evolução ainda não implementada */
+    }
+  }
+
+  // Renderiza a barra de navegação de trimestre (anterior / rótulo / próximo)
+  // no container informado. Usada no topo de Avaliação, Nine Box e Plano.
+  function renderQuarterBar(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+
+    const prev = document.createElement('button');
+    prev.className = 'q-nav';
+    prev.type = 'button';
+    prev.textContent = '‹';
+    prev.title = 'Trimestre anterior';
+    prev.addEventListener('click', () => setSelectedPeriod(shiftPeriod(selectedPeriod, -1)));
+
+    const label = document.createElement('span');
+    label.className = 'q-label';
+    label.textContent = selectedPeriod;
+
+    const next = document.createElement('button');
+    next.className = 'q-nav';
+    next.type = 'button';
+    next.textContent = '›';
+    next.title = 'Próximo trimestre';
+    next.addEventListener('click', () => setSelectedPeriod(shiftPeriod(selectedPeriod, +1)));
+
+    container.appendChild(prev);
+    container.appendChild(label);
+    container.appendChild(next);
+  }
+
+  // Acessor do trimestre selecionado dentro de um colaborador. Com create=false
+  // devolve um objeto vazio efêmero quando o período ainda não existe (leitura),
+  // sem tocar no membro. Com create=true materializa member.periods[selectedPeriod]
+  // para que escritas (notas/plano) persistam naquele trimestre.
+  function memberPeriod(member, create) {
+    if (!member.periods) member.periods = {};
+    if (!member.periods[selectedPeriod]) {
+      if (!create) return { scores: {}, plan: [] };
+      member.periods[selectedPeriod] = { scores: {}, plan: [] };
+    }
+    return member.periods[selectedPeriod];
   }
 
   // --------------------------- Navegação -----------------------------------
@@ -87,7 +158,7 @@
         <div class="avatar">${initials(m.name)}</div>
         <div class="m-name">${escapeHtml(m.name)}</div>
         <div class="m-role">${escapeHtml(m.role || '—')}</div>
-        <span class="m-box">${Model.nineBoxLabel(m)}</span>
+        <span class="m-box">${Model.nineBoxLabel(m, selectedPeriod)}</span>
       `;
       if (canEdit()) {
         card.style.cursor = 'pointer';
@@ -200,6 +271,7 @@
   });
 
   function renderEvaluate() {
+    renderQuarterBar('q-sel-evaluate');
     populateMemberSelect();
     const member = members.find((m) => m.id === selectedId);
     const empty = $('#evaluate-empty');
@@ -216,10 +288,10 @@
     empty.classList.add('hidden');
     body.classList.remove('hidden');
 
-    // Scoreboard
-    $('#score-performance').textContent = fmt(Model.performanceScore(member));
-    $('#score-potential').textContent = fmt(Model.potentialScore(member));
-    $('#score-ninebox').textContent = Model.nineBoxLabel(member);
+    // Scoreboard (do trimestre selecionado)
+    $('#score-performance').textContent = fmt(Model.performanceScore(member, selectedPeriod));
+    $('#score-potential').textContent = fmt(Model.potentialScore(member, selectedPeriod));
+    $('#score-ninebox').textContent = Model.nineBoxLabel(member, selectedPeriod);
 
     // Pilares
     const container = $('.pillars');
@@ -235,7 +307,7 @@
     const card = document.createElement('div');
     card.className = 'pillar-card';
 
-    const avg = Model.pillarAverage(member, pillar);
+    const avg = Model.pillarAverage(member, pillar, selectedPeriod);
     const head = document.createElement('div');
     head.className = 'pillar-head';
     head.innerHTML = `
@@ -256,7 +328,7 @@
     pillar.competencies.forEach((comp) => {
       const row = document.createElement('div');
       row.className = 'comp-row';
-      const current = member.scores?.[pillar.id]?.[comp.name];
+      const current = memberPeriod(member, false).scores?.[pillar.id]?.[comp.name];
 
       // nome + descrição logo abaixo
       const info = document.createElement('div');
@@ -294,15 +366,20 @@
   }
 
   async function setScore(member, pillar, comp, value) {
-    member.scores = member.scores || {};
-    member.scores[pillar.id] = member.scores[pillar.id] || {};
+    // grava no trimestre selecionado (cria o período na primeira escrita)
+    const period = memberPeriod(member, true);
+    period.scores = period.scores || {};
+    period.scores[pillar.id] = period.scores[pillar.id] || {};
     // clicar na nota já ativa alterna para "sem nota"
-    if (member.scores[pillar.id][comp] === value) {
-      delete member.scores[pillar.id][comp];
+    if (period.scores[pillar.id][comp] === value) {
+      delete period.scores[pillar.id][comp];
     } else {
-      member.scores[pillar.id][comp] = value;
+      period.scores[pillar.id][comp] = value;
     }
     await Store.save(member);
+    // mantém o array local em sincronia (Store.save migra em memória)
+    const idx = members.findIndex((m) => m.id === member.id);
+    if (idx >= 0) members[idx] = member;
     renderEvaluate(); // re-render para atualizar dots, médias, radar e scoreboard
   }
 
@@ -317,7 +394,7 @@
     }
 
     const labels = Model.compNames(pillar);
-    const memberData = Model.memberScoresByCompetency(member, pillar);
+    const memberData = Model.memberScoresByCompetency(member, pillar, selectedPeriod);
 
     const datasets = [];
     // Marca d'água (média do time) só aparece para o líder: o colaborador, por
@@ -325,7 +402,7 @@
     if (canEdit() && members.length > 1) {
       datasets.push({
         label: 'Média do time',
-        data: Model.teamAverageByCompetency(members, pillar, member.id),
+        data: Model.teamAverageByCompetency(members, pillar, member.id, selectedPeriod),
         backgroundColor: 'rgba(148, 163, 184, 0.15)',
         borderColor: 'rgba(148, 163, 184, 0.55)',
         borderWidth: 1,
@@ -382,14 +459,15 @@
 
   // --------------------------- Nine Box ------------------------------------
   function renderNineBox() {
+    renderQuarterBar('q-sel-ninebox');
     const canvas = $('#ninebox-chart');
     if (nineBoxChart) nineBoxChart.destroy();
 
     const points = members.map((m) => ({
-      x: Model.performanceScore(m),
-      y: Model.potentialScore(m),
+      x: Model.performanceScore(m, selectedPeriod),
+      y: Model.potentialScore(m, selectedPeriod),
       label: m.name,
-      box: Model.nineBoxLabel(m),
+      box: Model.nineBoxLabel(m, selectedPeriod),
     }));
 
     // plugin para desenhar as 9 células de fundo + rótulos
@@ -497,7 +575,7 @@
       item.className = 'legend-item';
       item.innerHTML = `<span class="lg-dot" style="background:#60a5fa"></span> ${escapeHtml(
         m.name
-      )} — <strong style="color:#cbd5e1">${Model.nineBoxLabel(m)}</strong>`;
+      )} — <strong style="color:#cbd5e1">${Model.nineBoxLabel(m, selectedPeriod)}</strong>`;
       legend.appendChild(item);
     });
 
@@ -521,7 +599,7 @@
     // conta quantos colaboradores caem em cada quadrante
     const counts = {};
     members.forEach((m) => {
-      const label = Model.nineBoxLabel(m);
+      const label = Model.nineBoxLabel(m, selectedPeriod);
       counts[label] = (counts[label] || 0) + 1;
     });
 
@@ -665,7 +743,8 @@
   });
 
   // ------------------- View: Plano de Desenvolvimento (PDI) ----------------
-  // O PDI vive dentro de member.plan = [ { id, title, desc, tasks:[{id,text,done}] } ].
+  // O PDI vive por trimestre em member.periods[periodKey].plan =
+  //   [ { id, title, desc, tasks:[{id,text,done}] } ].
   // Só líder edita (opção A); colaborador vê em leitura.
   let planSelectedId = null;
 
@@ -716,6 +795,7 @@
   }
 
   function renderPlan() {
+    renderQuarterBar('q-sel-plan');
     populatePlanSelect();
     $('#btn-add-objective').classList.toggle('hidden', !canEdit());
 
@@ -732,7 +812,7 @@
       return;
     }
 
-    const plan = member.plan || [];
+    const plan = memberPeriod(member, false).plan || [];
     if (plan.length === 0) {
       empty.textContent = canEdit()
         ? 'Nenhum objetivo ainda. Clique em "+ Novo objetivo" para começar.'
@@ -858,17 +938,21 @@
   }
 
   async function addTask(member, obj, text) {
+    // garante que o trimestre selecionado esteja materializado para persistir
+    memberPeriod(member, true);
     obj.tasks = obj.tasks || [];
     obj.tasks.push({ id: uid(), text, done: false });
     await persistPlan(member);
   }
 
   async function toggleTask(member, obj, task, done) {
+    memberPeriod(member, true);
     task.done = done;
     await persistPlan(member);
   }
 
   async function removeTask(member, obj, task) {
+    memberPeriod(member, true);
     obj.tasks = (obj.tasks || []).filter((t) => t.id !== task.id);
     await persistPlan(member);
   }
@@ -879,7 +963,7 @@
   function openObjectiveModal(member, objId) {
     if (!canEdit()) return;
     editingObjectiveId = objId || null;
-    const obj = objId ? (member.plan || []).find((o) => o.id === objId) : null;
+    const obj = objId ? (memberPeriod(member, false).plan || []).find((o) => o.id === objId) : null;
     $('#objective-modal-title').textContent = obj ? 'Editar objetivo' : 'Novo objetivo';
     $('#input-objective-title').value = obj ? obj.title : '';
     $('#input-objective-desc').value = obj ? obj.desc || '' : '';
@@ -911,15 +995,17 @@
       return;
     }
     const desc = $('#input-objective-desc').value.trim();
-    member.plan = member.plan || [];
+    // objetivos pertencem ao trimestre selecionado
+    const period = memberPeriod(member, true);
+    period.plan = period.plan || [];
     if (editingObjectiveId) {
-      const obj = member.plan.find((o) => o.id === editingObjectiveId);
+      const obj = period.plan.find((o) => o.id === editingObjectiveId);
       if (obj) {
         obj.title = title;
         obj.desc = desc;
       }
     } else {
-      member.plan.push({ id: uid(), title, desc, tasks: [] });
+      period.plan.push({ id: uid(), title, desc, tasks: [] });
     }
     closeObjectiveModal();
     await persistPlan(member);
@@ -929,7 +1015,8 @@
     const member = currentPlanMember();
     if (!member || !editingObjectiveId) return;
     if (!confirm('Excluir este objetivo e suas tarefas?')) return;
-    member.plan = (member.plan || []).filter((o) => o.id !== editingObjectiveId);
+    const period = memberPeriod(member, true);
+    period.plan = (period.plan || []).filter((o) => o.id !== editingObjectiveId);
     closeObjectiveModal();
     await persistPlan(member);
   });

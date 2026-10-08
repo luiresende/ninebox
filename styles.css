@@ -91,7 +91,42 @@ body {
 }
 .view-head h2 { margin: 0; font-size: 22px; }
 .view-head .hint, .view-head .select { margin-left: auto; }
+/* quando o seletor de trimestre precede o .select, ele é quem é empurrado para
+   a direita; o .select volta a seguir logo após (sem um segundo margin-left). */
+.view-head .quarter-bar { margin-left: auto; }
+.view-head .quarter-bar ~ .select { margin-left: 0; }
 .hint { color: var(--muted); font-size: 14px; }
+
+/* --------------------------- Seletor de trimestre ------------------------ */
+/* Barra global de navegação por trimestre (prev / rótulo YYYY-Qn / next),
+   presente nas views Avaliação, Nine Box e Plano. Reaproveita as cores do tema. */
+.quarter-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 6px;
+}
+.q-nav {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 15px; line-height: 1;
+}
+.q-nav:hover { border-color: var(--primary); color: #fff; }
+.q-label {
+  min-width: 72px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+}
 
 /* ----------------------------- Buttons ----------------------------------- */
 .btn {
