@@ -438,3 +438,100 @@ body {
 .role-leader { background: #065f46; color: #d1fae5; }
 .role-collab { background: #334155; color: #cbd5e1; }
 .user-row .select { min-width: 150px; }
+
+/* ------------------- Plano de Desenvolvimento (PDI) ---------------------- */
+.plan-objectives { display: flex; flex-direction: column; gap: 16px; }
+.objective-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+}
+.obj-head { display: flex; align-items: flex-start; gap: 16px; }
+.obj-titles { flex: 1; min-width: 0; }
+.obj-title { font-size: 16px; font-weight: 700; }
+.obj-desc { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.obj-pct {
+  font-size: 20px; font-weight: 800; color: #60a5fa;
+  white-space: nowrap;
+}
+.obj-pct.done { color: #34d399; }
+
+.progress {
+  height: 8px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 12px 0 14px;
+}
+.progress-fill {
+  height: 100%;
+  background: #2563eb;
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+.progress-fill.full { background: #059669; }
+
+.task-list { display: flex; flex-direction: column; gap: 2px; }
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.task-row:hover { background: var(--surface-2); }
+.task-row input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+.task-row .task-text { flex: 1; font-size: 14px; }
+.task-row.done .task-text { text-decoration: line-through; color: var(--muted); }
+.task-del {
+  background: transparent; border: none; color: var(--muted);
+  cursor: pointer; font-size: 13px; padding: 2px 6px; border-radius: 6px;
+}
+.task-del:hover { background: rgba(220,38,38,0.15); color: #fca5a5; }
+
+.task-add { display: flex; gap: 8px; margin-top: 10px; }
+.task-add .select { flex: 1; min-width: 0; }
+.obj-actions { margin-top: 10px; }
+
+/* ----------------------------- Tutorial --------------------------------- */
+.tutorial-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.tut-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+}
+.tut-card h3 { margin: 0 0 10px; font-size: 16px; }
+.tut-card p { margin: 0 0 8px; font-size: 14px; color: #cbd5e1; }
+.tut-card em { color: #e2e8f0; font-style: normal; font-weight: 600; }
+
+.tut-pillars { display: flex; gap: 10px; flex-wrap: wrap; }
+.tut-pillar {
+  flex: 1; min-width: 120px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.tut-pillar-name { font-weight: 700; font-size: 14px; }
+.tut-pillar-sub { font-size: 12px; color: var(--muted); }
+
+.scale-list { display: flex; flex-direction: column; gap: 10px; }
+.scale-row { display: flex; align-items: flex-start; gap: 12px; }
+.scale-num {
+  flex-shrink: 0;
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--primary); color: #fff;
+  border-radius: 8px; font-weight: 800;
+}
+.scale-name { font-weight: 700; font-size: 14px; }
+.scale-desc { font-size: 13px; color: var(--muted); }

@@ -43,6 +43,8 @@
     if (view === 'ninebox') renderNineBox();
     if (view === 'evaluate') renderEvaluate();
     if (view === 'users') renderUsers();
+    if (view === 'plan') renderPlan();
+    if (view === 'tutorial') renderTutorial();
   }
 
   $$('.nav-item').forEach((tab) => {
@@ -638,6 +640,348 @@
     await renderUsers();
   });
 
+  // ------------------- View: Plano de Desenvolvimento (PDI) ----------------
+  // O PDI vive dentro de member.plan = [ { id, title, desc, tasks:[{id,text,done}] } ].
+  // Só líder edita (opção A); colaborador vê em leitura.
+  let planSelectedId = null;
+
+  function planMembers() {
+    // líder escolhe qualquer colaborador; colaborador só a si mesmo
+    return members;
+  }
+
+  function populatePlanSelect() {
+    const sel = $('#plan-member-select');
+    sel.innerHTML = '';
+    const list = planMembers();
+    if (list.length === 0) {
+      const opt = document.createElement('option');
+      opt.textContent = 'Nenhum colaborador';
+      opt.value = '';
+      sel.appendChild(opt);
+      return;
+    }
+    list.forEach((m) => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.name;
+      sel.appendChild(opt);
+    });
+    if (!planSelectedId || !list.find((m) => m.id === planSelectedId)) {
+      planSelectedId = list[0].id;
+    }
+    sel.value = planSelectedId;
+    // colaborador não troca de pessoa
+    sel.classList.toggle('hidden', !canEdit() && list.length <= 1);
+  }
+
+  $('#plan-member-select').addEventListener('change', (e) => {
+    planSelectedId = e.target.value;
+    renderPlan();
+  });
+
+  function currentPlanMember() {
+    return members.find((m) => m.id === planSelectedId) || null;
+  }
+
+  function objectiveProgress(obj) {
+    const tasks = obj.tasks || [];
+    if (tasks.length === 0) return 0;
+    const done = tasks.filter((t) => t.done).length;
+    return Math.round((done / tasks.length) * 100);
+  }
+
+  function renderPlan() {
+    populatePlanSelect();
+    $('#btn-add-objective').classList.toggle('hidden', !canEdit());
+
+    const member = currentPlanMember();
+    const empty = $('#plan-empty');
+    const box = $('#plan-objectives');
+
+    if (!member) {
+      empty.textContent = canEdit()
+        ? 'Selecione um colaborador.'
+        : 'Sua avaliação ainda não foi cadastrada. Procure seu líder.';
+      empty.classList.remove('hidden');
+      box.classList.add('hidden');
+      return;
+    }
+
+    const plan = member.plan || [];
+    if (plan.length === 0) {
+      empty.textContent = canEdit()
+        ? 'Nenhum objetivo ainda. Clique em "+ Novo objetivo" para começar.'
+        : 'Nenhum objetivo de desenvolvimento cadastrado ainda.';
+      empty.classList.remove('hidden');
+      box.classList.add('hidden');
+      return;
+    }
+
+    empty.classList.add('hidden');
+    box.classList.remove('hidden');
+    box.innerHTML = '';
+
+    plan.forEach((obj) => {
+      box.appendChild(buildObjectiveCard(member, obj));
+    });
+  }
+
+  function buildObjectiveCard(member, obj) {
+    const pct = objectiveProgress(obj);
+    const card = document.createElement('div');
+    card.className = 'objective-card';
+
+    const head = document.createElement('div');
+    head.className = 'obj-head';
+    head.innerHTML = `
+      <div class="obj-titles">
+        <div class="obj-title">${escapeHtml(obj.title)}</div>
+        ${obj.desc ? `<div class="obj-desc">${escapeHtml(obj.desc)}</div>` : ''}
+      </div>
+      <div class="obj-pct ${pct === 100 ? 'done' : ''}">${pct}%</div>
+    `;
+    card.appendChild(head);
+
+    // barra de progresso
+    const bar = document.createElement('div');
+    bar.className = 'progress';
+    const fill = document.createElement('div');
+    fill.className = 'progress-fill' + (pct === 100 ? ' full' : '');
+    fill.style.width = pct + '%';
+    bar.appendChild(fill);
+    card.appendChild(bar);
+
+    // tarefas
+    const tasks = obj.tasks || [];
+    const taskList = document.createElement('div');
+    taskList.className = 'task-list';
+    tasks.forEach((task) => {
+      const row = document.createElement('label');
+      row.className = 'task-row' + (task.done ? ' done' : '');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!task.done;
+      cb.disabled = !canEdit();
+      cb.addEventListener('change', () => toggleTask(member, obj, task, cb.checked));
+      const txt = document.createElement('span');
+      txt.className = 'task-text';
+      txt.textContent = task.text;
+      row.appendChild(cb);
+      row.appendChild(txt);
+      if (canEdit()) {
+        const del = document.createElement('button');
+        del.className = 'task-del';
+        del.textContent = '✕';
+        del.title = 'Remover tarefa';
+        del.addEventListener('click', (e) => {
+          e.preventDefault();
+          removeTask(member, obj, task);
+        });
+        row.appendChild(del);
+      }
+      taskList.appendChild(row);
+    });
+    card.appendChild(taskList);
+
+    // ações do líder: adicionar tarefa, editar/excluir objetivo
+    if (canEdit()) {
+      const addRow = document.createElement('div');
+      addRow.className = 'task-add';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = 'Nova tarefa/ação…';
+      input.className = 'select';
+      const addBtn = document.createElement('button');
+      addBtn.className = 'btn';
+      addBtn.textContent = 'Adicionar';
+      const doAdd = () => {
+        const text = input.value.trim();
+        if (!text) return;
+        addTask(member, obj, text);
+      };
+      addBtn.addEventListener('click', doAdd);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') doAdd();
+      });
+      addRow.appendChild(input);
+      addRow.appendChild(addBtn);
+      card.appendChild(addRow);
+
+      const objActions = document.createElement('div');
+      objActions.className = 'obj-actions';
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn';
+      editBtn.textContent = 'Editar objetivo';
+      editBtn.addEventListener('click', () => openObjectiveModal(member, obj.id));
+      objActions.appendChild(editBtn);
+      card.appendChild(objActions);
+    }
+
+    return card;
+  }
+
+  function uid() {
+    return 'o_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  async function persistPlan(member) {
+    await Store.save(member);
+    // mantém o array local em sincronia e re-renderiza
+    const idx = members.findIndex((m) => m.id === member.id);
+    if (idx >= 0) members[idx] = member;
+    renderPlan();
+  }
+
+  async function addTask(member, obj, text) {
+    obj.tasks = obj.tasks || [];
+    obj.tasks.push({ id: uid(), text, done: false });
+    await persistPlan(member);
+  }
+
+  async function toggleTask(member, obj, task, done) {
+    task.done = done;
+    await persistPlan(member);
+  }
+
+  async function removeTask(member, obj, task) {
+    obj.tasks = (obj.tasks || []).filter((t) => t.id !== task.id);
+    await persistPlan(member);
+  }
+
+  // ---- Modal de objetivo ----
+  let editingObjectiveId = null;
+
+  function openObjectiveModal(member, objId) {
+    if (!canEdit()) return;
+    editingObjectiveId = objId || null;
+    const obj = objId ? (member.plan || []).find((o) => o.id === objId) : null;
+    $('#objective-modal-title').textContent = obj ? 'Editar objetivo' : 'Novo objetivo';
+    $('#input-objective-title').value = obj ? obj.title : '';
+    $('#input-objective-desc').value = obj ? obj.desc || '' : '';
+    $('#btn-delete-objective').classList.toggle('hidden', !obj);
+    $('#objective-modal').classList.remove('hidden');
+    $('#input-objective-title').focus();
+  }
+
+  function closeObjectiveModal() {
+    $('#objective-modal').classList.add('hidden');
+    editingObjectiveId = null;
+  }
+
+  $('#btn-add-objective').addEventListener('click', () => {
+    const member = currentPlanMember();
+    if (member) openObjectiveModal(member, null);
+  });
+  $('#btn-cancel-objective').addEventListener('click', closeObjectiveModal);
+  $('#objective-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'objective-modal') closeObjectiveModal();
+  });
+
+  $('#btn-save-objective').addEventListener('click', async () => {
+    const member = currentPlanMember();
+    if (!member) return;
+    const title = $('#input-objective-title').value.trim();
+    if (!title) {
+      $('#input-objective-title').focus();
+      return;
+    }
+    const desc = $('#input-objective-desc').value.trim();
+    member.plan = member.plan || [];
+    if (editingObjectiveId) {
+      const obj = member.plan.find((o) => o.id === editingObjectiveId);
+      if (obj) {
+        obj.title = title;
+        obj.desc = desc;
+      }
+    } else {
+      member.plan.push({ id: uid(), title, desc, tasks: [] });
+    }
+    closeObjectiveModal();
+    await persistPlan(member);
+  });
+
+  $('#btn-delete-objective').addEventListener('click', async () => {
+    const member = currentPlanMember();
+    if (!member || !editingObjectiveId) return;
+    if (!confirm('Excluir este objetivo e suas tarefas?')) return;
+    member.plan = (member.plan || []).filter((o) => o.id !== editingObjectiveId);
+    closeObjectiveModal();
+    await persistPlan(member);
+  });
+
+  // --------------------------- View: Tutorial ------------------------------
+  function renderTutorial() {
+    const body = $('#tutorial-body');
+    if (!body || body.dataset.rendered === '1') return; // estático: renderiza uma vez
+
+    const scaleRows = Object.keys(Model.SCALE_LABELS)
+      .map((n) => {
+        const s = Model.SCALE_LABELS[n];
+        return `
+          <div class="scale-row">
+            <span class="scale-num">${n}</span>
+            <div>
+              <div class="scale-name">${escapeHtml(s.name)}</div>
+              <div class="scale-desc">${escapeHtml(s.desc)}</div>
+            </div>
+          </div>`;
+      })
+      .join('');
+
+    const pillarCards = Model.PILLARS.map(
+      (p) => `
+        <div class="tut-pillar" style="border-top-color:${p.color}">
+          <div class="tut-pillar-name">${escapeHtml(p.name)}</div>
+          <div class="tut-pillar-sub">${escapeHtml(p.subtitle)}</div>
+        </div>`
+    ).join('');
+
+    body.innerHTML = `
+      <div class="tut-card">
+        <h3>O que é este app</h3>
+        <p>Uma ferramenta para avaliar colaboradores em três pilares, comparar com a média
+        do time e posicioná-los numa matriz <strong>Nine Box</strong> (Potencial × Desempenho),
+        além de acompanhar um <strong>Plano de Desenvolvimento</strong> individual.</p>
+      </div>
+
+      <div class="tut-card">
+        <h3>Os 3 pilares</h3>
+        <div class="tut-pillars">${pillarCards}</div>
+        <p style="margin-top:12px">Cada pilar tem competências avaliadas de 1 a 5. A média
+        das competências forma a nota do pilar.</p>
+      </div>
+
+      <div class="tut-card">
+        <h3>Escala de notas (1 a 5)</h3>
+        <div class="scale-list">${scaleRows}</div>
+      </div>
+
+      <div class="tut-card">
+        <h3>Desempenho × Potencial (Nine Box)</h3>
+        <p><strong>Desempenho</strong> (eixo horizontal) = o que a pessoa entrega hoje,
+        calculado pela média de <em>HardSkill</em> e <em>Disciplina</em>.</p>
+        <p><strong>Potencial</strong> (eixo vertical) = capacidade de crescer e liderar,
+        vindo do pilar <em>SoftSkill</em> (Leadership Principles). O cruzamento posiciona a
+        pessoa em um dos 9 quadrantes — a explicação de cada um está na aba <strong>Nine Box</strong>.</p>
+      </div>
+
+      <div class="tut-card">
+        <h3>Plano de Desenvolvimento</h3>
+        <p>Para cada colaborador, o líder cadastra <strong>objetivos</strong> com <strong>tarefas</strong>.
+        Ao marcar as tarefas concluídas, o progresso do objetivo sobe até 100% quando todas
+        estão feitas. É o caminho prático para melhorar as notas da avaliação.</p>
+      </div>
+
+      <div class="tut-card">
+        <h3>Papéis de acesso</h3>
+        <p><strong>Líder:</strong> vê e avalia todos, gerencia papéis e os planos de desenvolvimento.</p>
+        <p><strong>Colaborador:</strong> vê apenas a própria avaliação e o próprio plano, em modo leitura.</p>
+      </div>
+    `;
+    body.dataset.rendered = '1';
+  }
+
   // --------------------------- Ciclo de vida -------------------------------
   async function reloadAndRender() {
     members = await Store.list();
@@ -645,6 +989,7 @@
     renderEvaluate();
     const activeView = $('.nav-item.active')?.dataset.view;
     if (activeView === 'ninebox') renderNineBox();
+    if (activeView === 'plan') renderPlan();
   }
 
   // fecha o modal ao clicar fora

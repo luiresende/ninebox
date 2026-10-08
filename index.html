@@ -66,8 +66,14 @@
         <button class="nav-item" data-view="ninebox">
           <span class="nav-icon">🎯</span> Nine Box
         </button>
+        <button class="nav-item" data-view="plan">
+          <span class="nav-icon">📈</span> Plano de Desenvolvimento
+        </button>
         <button class="nav-item" data-view="users" id="nav-users">
           <span class="nav-icon">🔑</span> Usuários
+        </button>
+        <button class="nav-item" data-view="tutorial">
+          <span class="nav-icon">❓</span> Tutorial
         </button>
       </nav>
       <div class="sidebar-footer">
@@ -166,7 +172,52 @@
         Nenhum papel definido ainda. Por padrão, quem se cadastra entra como Colaborador.
       </p>
     </section>
+
+    <!-- ============ VIEW: PLANO DE DESENVOLVIMENTO (PDI) ============ -->
+    <section id="view-plan" class="view">
+      <div class="view-head">
+        <h2>Plano de Desenvolvimento</h2>
+        <select id="plan-member-select" class="select"></select>
+        <button id="btn-add-objective" class="btn btn-primary hidden">+ Novo objetivo</button>
+      </div>
+
+      <p class="hint" style="margin:-8px 0 18px">
+        Objetivos de desenvolvimento com ações para melhorar as avaliações. Marque as
+        tarefas concluídas; o progresso de cada objetivo vai até 100% quando todas estão feitas.
+      </p>
+
+      <div id="plan-empty" class="empty-state">Selecione um colaborador.</div>
+      <div id="plan-objectives" class="plan-objectives hidden"></div>
+    </section>
+
+    <!-- ===================== VIEW: TUTORIAL ==================== -->
+    <section id="view-tutorial" class="view">
+      <div class="view-head">
+        <h2>Como funciona o app</h2>
+      </div>
+      <div id="tutorial-body" class="tutorial-body"></div>
+    </section>
     </main>
+  </div>
+
+  <!-- =============== MODAL: OBJETIVO (PDI) =============== -->
+  <div id="objective-modal" class="modal hidden">
+    <div class="modal-card">
+      <h3 id="objective-modal-title">Novo objetivo</h3>
+      <label class="field">
+        <span>Título do objetivo</span>
+        <input id="input-objective-title" type="text" placeholder="Ex: Dominar Terraform" />
+      </label>
+      <label class="field">
+        <span>Descrição (opcional)</span>
+        <input id="input-objective-desc" type="text" placeholder="Ex: Elevar a nota de IaC" />
+      </label>
+      <div class="modal-actions">
+        <button id="btn-cancel-objective" class="btn">Cancelar</button>
+        <button id="btn-delete-objective" class="btn btn-danger hidden">Excluir</button>
+        <button id="btn-save-objective" class="btn btn-primary">Salvar</button>
+      </div>
+    </div>
   </div>
 
   <!-- ===================== MODAL: COLABORADOR ================= -->

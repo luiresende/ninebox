@@ -14,6 +14,15 @@
   const SCALE_MIN = 1;
   const SCALE_MAX = 5;
 
+  // Rótulos da escala de notas (1..5), usados no Tutorial e como referência.
+  const SCALE_LABELS = {
+    1: { name: 'Muito baixo', desc: 'Pouco ou nenhum conhecimento/entrega na competência. Precisa de apoio constante.' },
+    2: { name: 'Básico', desc: 'Conhecimento inicial. Executa tarefas simples com supervisão.' },
+    3: { name: 'Intermediário', desc: 'Atua de forma independente na maioria das situações do dia a dia.' },
+    4: { name: 'Avançado', desc: 'Domínio sólido. Resolve problemas complexos e orienta colegas.' },
+    5: { name: 'Experiente', desc: 'Referência no tema. Lidera, define padrões e desenvolve outras pessoas.' },
+  };
+
   // --- Definição dos 3 pilares e suas competências (eixos do radar) ---------
   const PILLARS = [
     {
@@ -169,6 +178,7 @@
   window.Model = {
     SCALE_MIN,
     SCALE_MAX,
+    SCALE_LABELS,
     PILLARS,
     NINE_BOX,
     compNames,
