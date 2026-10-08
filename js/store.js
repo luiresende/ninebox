@@ -312,4 +312,6 @@
   window.Store.normEmail = norm;
   window.Store.currentPeriodKey = currentPeriodKey;
   window.Store.periodKeyFor = periodKeyFor;
+  // exposto para os self-tests (?selftest) exercitarem a migração real.
+  window.Store.migrateOnRead = migrateOnRead;
 })();

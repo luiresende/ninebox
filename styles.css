@@ -263,6 +263,19 @@ body {
   padding: 20px;
   height: 560px;
 }
+/* ---------------------------- Evolução ----------------------------------- */
+/* Espelha o .ninebox-wrap (mesmo tema escuro) com altura menor para o gráfico
+   de linhas. position:relative + maintainAspectRatio:false fazem o canvas do
+   Chart.js preencher a altura fixa. */
+.evolution-wrap {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  height: 360px;
+}
+
 .ninebox-legend {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));

@@ -69,6 +69,9 @@
         <button class="nav-item" data-view="plan">
           <span class="nav-icon">📈</span> Plano de Desenvolvimento
         </button>
+        <button class="nav-item" data-view="evolution">
+          <span class="nav-icon">📊</span> Evolução
+        </button>
         <button class="nav-item" data-view="users" id="nav-users">
           <span class="nav-icon">🔑</span> Usuários
         </button>
@@ -191,6 +194,25 @@
 
       <div id="plan-empty" class="empty-state">Selecione um colaborador.</div>
       <div id="plan-objectives" class="plan-objectives hidden"></div>
+    </section>
+
+    <!-- ===================== VIEW: EVOLUÇÃO ==================== -->
+    <section id="view-evolution" class="view">
+      <div class="view-head">
+        <h2>Evolução</h2>
+        <div class="quarter-bar" id="q-sel-evolution"></div>
+        <select id="evolution-member-select" class="select"></select>
+      </div>
+
+      <p class="hint" style="margin:-8px 0 18px">
+        Média de cada pilar (HardSkill, SoftSkill e Disciplina) por trimestre, para
+        acompanhar a evolução do colaborador ao longo do tempo.
+      </p>
+
+      <div class="evolution-wrap">
+        <canvas id="evolution-chart"></canvas>
+      </div>
+      <p id="evolution-empty" class="empty-state hidden">Selecione um colaborador.</p>
     </section>
 
     <!-- ===================== VIEW: TUTORIAL ==================== -->
