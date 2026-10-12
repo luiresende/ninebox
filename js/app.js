@@ -1769,6 +1769,12 @@
     // (a) membro legado migra para o trimestre atual preservando scores/plan.
     const legacy = {
       id: 't',
+      // hardMigratedV1:true isola a migração TRIMESTRAL (FEAT-003) da migração
+      // de HardSkill por família: sem este flag, migrateOnRead chamaria
+      // clearHardSkill e zeraria scores.hard, invalidando as asserções deste
+      // bloco (que verificam apenas o pouso dos scores de raiz no trimestre
+      // atual). O zeramento do HardSkill é coberto pelo bloco (f) adiante.
+      hardMigratedV1: true,
       scores: { hard: { 'Cloud / AWS': 4, 'CI/CD': 2 } },
       plan: [{ id: 'o', title: 'x', tasks: [] }],
     };
