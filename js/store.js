@@ -188,6 +188,23 @@
     },
     async setRole() {},
     async removeRole() {},
+    // cargos adicionais no modo local ficam no localStorage
+    async listCargos() {
+      try {
+        return JSON.parse(localStorage.getItem('avaliacao.cargos.v1')) || [];
+      } catch {
+        return [];
+      }
+    },
+    async addCargo(name) {
+      const nm = (name || '').trim();
+      if (!nm) return;
+      const list = await this.listCargos();
+      if (!list.includes(nm)) {
+        list.push(nm);
+        localStorage.setItem('avaliacao.cargos.v1', JSON.stringify(list));
+      }
+    },
   };
 
   // ==========================================================================
@@ -199,6 +216,7 @@
     const db = firebase.firestore();
     const col = db.collection('members');
     const rolesCol = db.collection('roles');
+    const cargosCol = db.collection('cargos');
 
     // mantém login entre reloads
     auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
@@ -298,6 +316,28 @@
       // NÃO apaga o login (Authentication) nem a avaliação (members).
       async removeRole(email) {
         await rolesCol.doc(emailToId(email)).delete();
+      },
+
+      // ----- Cargos (coleção "cargos"; todos leem, só líder escreve) --------
+      // Retorna os NOMES dos cargos adicionados (além dos fixos do model).
+      async listCargos() {
+        try {
+          const snap = await cargosCol.get();
+          return snap.docs.map((d) => (d.data() && d.data().name) || d.id);
+        } catch (e) {
+          return [];
+        }
+      },
+
+      // Adiciona um cargo novo (id derivado do nome). Idempotente.
+      async addCargo(name) {
+        const nm = (name || '').trim();
+        if (!nm) return;
+        const id = nm.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
+        await cargosCol.doc(id || Date.now().toString(36)).set(
+          { name: nm, createdAt: Date.now() },
+          { merge: true }
+        );
       },
     };
 

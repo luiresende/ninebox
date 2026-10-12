@@ -9,6 +9,7 @@
   let members = [];
   let selectedId = null;
   let editingId = null; // null = criando; id = editando no modal
+  let cargosList = []; // nomes de cargos: fixos (Model) + criados + migrados
   const radarCharts = {}; // pillarId -> Chart
   let nineBoxChart = null;
   let evolutionChart = null;
@@ -177,6 +178,72 @@
     );
   }
 
+  // --------------------------- Cargos --------------------------------------
+  // Monta a lista de cargos: fixos (Model.DEFAULT_ROLES) + criados (Store) +
+  // os que já aparecem nos colaboradores (migração dos cargos-texto antigos).
+  async function loadCargos() {
+    const set = new Set(Model.DEFAULT_ROLES);
+    try {
+      (await Store.listCargos()).forEach((c) => c && set.add(c));
+    } catch (e) {}
+    // migra cargos-texto já existentes nos colaboradores
+    members.forEach((m) => {
+      if (m.role && m.role.trim()) set.add(m.role.trim());
+    });
+    cargosList = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }
+
+  // Garante que um cargo exista na lista; se for novo, persiste no Store.
+  async function ensureCargo(name) {
+    const nm = (name || '').trim();
+    if (!nm) return;
+    if (!cargosList.includes(nm)) {
+      cargosList.push(nm);
+      cargosList.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      try {
+        await Store.addCargo(nm);
+      } catch (e) {}
+    }
+  }
+
+  // Preenche o dropdown de cargos no modal, selecionando o cargo atual.
+  function populateRoleSelect(currentRole) {
+    const sel = $('#input-role-select');
+    sel.innerHTML = '';
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = '— selecione —';
+    sel.appendChild(blank);
+    cargosList.forEach((c) => {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      sel.appendChild(opt);
+    });
+    const novo = document.createElement('option');
+    novo.value = '__new__';
+    novo.textContent = '➕ Novo cargo';
+    sel.appendChild(novo);
+
+    // se o cargo atual não está na lista (ex: legado), adiciona pontualmente
+    if (currentRole && !cargosList.includes(currentRole)) {
+      const opt = document.createElement('option');
+      opt.value = currentRole;
+      opt.textContent = currentRole;
+      sel.insertBefore(opt, novo);
+    }
+    sel.value = currentRole || '';
+    $('#new-role-field').classList.add('hidden');
+    $('#input-role-new').value = '';
+  }
+
+  // mostra/esconde o campo de novo cargo conforme a seleção
+  function onRoleSelectChange() {
+    const isNew = $('#input-role-select').value === '__new__';
+    $('#new-role-field').classList.toggle('hidden', !isNew);
+    if (isNew) $('#input-role-new').focus();
+  }
+
   // --------------------------- Modal ---------------------------------------
   function openMemberModal(id) {
     if (!canEdit()) return; // colaborador não cadastra/edita
@@ -185,7 +252,7 @@
     $('#modal-title').textContent = member ? 'Editar colaborador' : 'Novo colaborador';
     $('#input-name').value = member ? member.name : '';
     $('#input-email').value = member ? member.email || member.id : '';
-    $('#input-role').value = member ? member.role || '' : '';
+    populateRoleSelect(member ? member.role || '' : '');
     // o e-mail é a chave do documento: não pode mudar ao editar
     $('#input-email').disabled = !!member;
     $('#btn-delete-member').classList.toggle('hidden', !member);
@@ -200,6 +267,14 @@
 
   $('#btn-add-member').addEventListener('click', () => openMemberModal(null));
   $('#btn-cancel-member').addEventListener('click', closeMemberModal);
+  $('#input-role-select').addEventListener('change', onRoleSelectChange);
+
+  // Lê o cargo escolhido no modal (dropdown ou campo de novo cargo).
+  function readRoleFromModal() {
+    const sel = $('#input-role-select').value;
+    if (sel === '__new__') return $('#input-role-new').value.trim();
+    return sel;
+  }
 
   $('#btn-save-member').addEventListener('click', async () => {
     const name = $('#input-name').value.trim();
@@ -207,7 +282,8 @@
       $('#input-name').focus();
       return;
     }
-    const role = $('#input-role').value.trim();
+    const role = readRoleFromModal();
+    if (role) await ensureCargo(role); // persiste cargo novo, se for o caso
 
     if (editingId) {
       const m = members.find((x) => x.id === editingId);
@@ -322,6 +398,7 @@
         continue;
       }
 
+      if (roleTxt) await ensureCargo(roleTxt); // CSV com cargo novo -> cria
       const m = { id: email, email, name, role: roleTxt, periods: {} };
       await Store.save(m);
       members.push(m);
@@ -1397,6 +1474,7 @@
   // --------------------------- Ciclo de vida -------------------------------
   async function reloadAndRender() {
     members = await Store.list();
+    await loadCargos(); // cargos dependem dos membros (migração) + Store
     renderTeam();
     renderEvaluate();
     const activeView = $('.nav-item.active')?.dataset.view;

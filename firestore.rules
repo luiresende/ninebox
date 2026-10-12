@@ -72,5 +72,14 @@ service cloud.firestore {
       // SOMENTE líder define/edita/remove papéis. (impede autopromoção)
       allow write: if isLeader();
     }
+
+    // ----------------------------- cargos -----------------------------------
+    match /cargos/{cargoId} {
+      // Qualquer usuário logado lê a lista de cargos (para o dropdown).
+      allow read: if isSignedIn();
+
+      // SOMENTE líder cria/edita/remove cargos.
+      allow write: if isLeader();
+    }
   }
 }

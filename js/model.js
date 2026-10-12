@@ -14,6 +14,23 @@
   const SCALE_MIN = 1;
   const SCALE_MAX = 5;
 
+  // Cargos fixos semeados no código. Cargos adicionais criados pelo líder (ou
+  // pela importação de CSV) são guardados no Firestore (coleção "cargos") e
+  // somados a estes em tempo de execução. No futuro, cada cargo poderá ter sua
+  // própria avaliação — por isso o cargo tende a virar entidade central.
+  const DEFAULT_ROLES = [
+    'Engenheiro DevOps Júnior',
+    'Engenheiro DevOps Pleno',
+    'Engenheiro DevOps Sênior',
+    'Analista de Cloud Júnior',
+    'Analista de Cloud Pleno',
+    'Analista de Cloud Sênior',
+    'Tech Lead',
+    'Analista de Processos Júnior',
+    'Analista de Processos Pleno',
+    'Analista de Processos Sênior',
+  ];
+
   // Rótulos da escala de notas (1..5), usados no Tutorial e como referência.
   const SCALE_LABELS = {
     1: { name: 'Muito baixo', desc: 'Pouco ou nenhum conhecimento/entrega na competência. Precisa de apoio constante.' },
@@ -438,5 +455,6 @@
     band,
     suggestObjectives,
     SUGGESTION_CATALOG,
+    DEFAULT_ROLES,
   };
 })();
