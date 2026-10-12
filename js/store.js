@@ -91,6 +91,36 @@
     return periodKeyFor(new Date());
   }
 
+  // --- Limpeza do pilar HardSkill (contrato) ---------------------------------
+  // clearHardSkill(member) ZERA o pilar HardSkill do membro, removendo a chave
+  // 'hard' das notas de CADA período (member.periods[k].scores.hard) e também
+  // o legado de raiz member.scores.hard, caso exista. Características:
+  //   - IDEMPOTENTE: aplicar N vezes produz o mesmo resultado (o delete de uma
+  //     chave inexistente é inócuo); nunca lança exceção por 'hard' ausente.
+  //   - NÃO DESTRUTIVA: preserva scores.soft, scores.discipline e plan em TODOS
+  //     os períodos (e o plan/soft/discipline de raiz, se houver). Só mexe em
+  //     'hard'.
+  //   - Mutação IN PLACE: altera o próprio objeto recebido e o devolve.
+  // Motivo: a troca para HardSkill por família de cargo invalida as notas de
+  // HardSkill antigas (os eixos passam a depender do cargo), então o pilar é
+  // zerado uma única vez na migração (ver migrateOnRead + flag hardMigratedV1).
+  function clearHardSkill(member) {
+    if (!member) return member;
+    if (member.periods && typeof member.periods === 'object') {
+      Object.keys(member.periods).forEach((k) => {
+        const p = member.periods[k];
+        if (p && p.scores && Object.prototype.hasOwnProperty.call(p.scores, 'hard')) {
+          delete p.scores.hard; // preserva soft/discipline em p.scores e p.plan
+        }
+      });
+    }
+    // legado de raiz: alguns membros antigos guardam scores na raiz do doc
+    if (member.scores && Object.prototype.hasOwnProperty.call(member.scores, 'hard')) {
+      delete member.scores.hard;
+    }
+    return member;
+  }
+
   // --- Migração preguiçosa e NÃO destrutiva (contrato) -----------------------
   // Membros legados guardam { scores, plan } na raiz do doc. Para suportar
   // avaliação trimestral passamos a guardar member.periods['YYYY-Qn'] =
@@ -112,6 +142,15 @@
         plan: member.plan || [],
       };
     }
+    // Migração do HardSkill por família de cargo: zera o pilar HardSkill UMA
+    // ÚNICA VEZ por membro, controlada pelo flag PERSISTENTE hardMigratedV1.
+    // Como o flag faz parte do próprio member, ele é gravado no doc
+    // (ver prepareForWrite) e, em leituras futuras, impede re-zerar notas de
+    // HardSkill que o usuário tenha inserido APÓS a migração.
+    if (member.hardMigratedV1 !== true) {
+      clearHardSkill(member);
+      member.hardMigratedV1 = true;
+    }
     return member;
   }
 
@@ -121,6 +160,11 @@
   // firebase.firestore.FieldValue.delete(); no modo local basta omiti-los.
   function prepareForWrite(member, mode) {
     migrateOnRead(member);
+    // Object.assign copia TODOS os campos do membro, incluindo o flag
+    // persistente hardMigratedV1, de modo que ele é gravado no doc. O objeto
+    // periods também é copiado por referência e gravado inteiro (o merge
+    // sobrescreve a chave 'periods'), então o scores.hard já removido por
+    // clearHardSkill persiste naturalmente — nenhum caminho reintroduz 'hard'.
     const payload = Object.assign({}, member);
     if (mode === 'firebase') {
       payload.scores = firebase.firestore.FieldValue.delete();
@@ -354,4 +398,7 @@
   window.Store.periodKeyFor = periodKeyFor;
   // exposto para os self-tests (?selftest) exercitarem a migração real.
   window.Store.migrateOnRead = migrateOnRead;
+  // exposto para os self-tests exercitarem a limpeza do HardSkill
+  // (idempotência e preservação de soft/discipline/plan).
+  window.Store.clearHardSkill = clearHardSkill;
 })();
