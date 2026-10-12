@@ -470,14 +470,17 @@
     $('#score-potential').textContent = fmt(Model.potentialScore(member, selectedPeriod));
     $('#score-ninebox').textContent = Model.nineBoxLabel(member, selectedPeriod);
 
-    // Pilares
+    // Pilares. O pilar HardSkill é resolvido pela família do cargo do membro
+    // (Model.resolvePillar), de modo que as competências e o radar refletem o
+    // cargo; soft/discipline permanecem fixos.
     const container = $('.pillars');
     container.innerHTML = '';
-    PILLARS.forEach((pillar) => {
+    PILLARS.forEach((basePillar) => {
+      const pillar = Model.resolvePillar(member, basePillar.id);
       container.appendChild(buildPillarCard(member, pillar));
     });
     // Desenha os radares depois que os canvases estão no DOM
-    PILLARS.forEach((pillar) => drawRadar(member, pillar));
+    PILLARS.forEach((basePillar) => drawRadar(member, Model.resolvePillar(member, basePillar.id)));
   }
 
   function buildPillarCard(member, pillar) {
@@ -1345,8 +1348,11 @@
     let periodKeys = Object.keys(member.periods || {}).sort();
     if (periodKeys.length === 0) periodKeys = [Store.currentPeriodKey()];
 
-    // um dataset por pilar: média do pilar em cada trimestre.
-    const datasets = PILLARS.map((pillar) => ({
+    // um dataset por pilar: média do pilar em cada trimestre. O HardSkill é
+    // resolvido pela família do cargo do membro; soft/discipline inalterados.
+    const datasets = PILLARS.map((basePillar) => {
+      const pillar = Model.resolvePillar(member, basePillar.id);
+      return {
       label: pillar.name,
       data: periodKeys.map((k) => Model.pillarAverage(member, pillar, k)),
       borderColor: pillar.color,
@@ -1354,7 +1360,8 @@
       borderWidth: 2,
       pointRadius: 3,
       tension: 0.25,
-    }));
+      };
+    });
 
     if (evolutionChart) evolutionChart.destroy();
     evolutionChart = new Chart(canvas, {
@@ -1428,6 +1435,10 @@
           <div class="tut-pillars">${pillarCards}</div>
           <p class="tut-note">Cada pilar reúne competências avaliadas de 1 a 5. A média das
           competências forma a nota do pilar.</p>
+          <p class="tut-note">O <strong>HardSkill varia conforme o cargo</strong>: cada família tem seu
+          próprio conjunto de competências técnicas — <em>Engenheiro DevOps</em>, <em>Analista de Cloud</em>,
+          <em>Analista de Processos</em> e <em>Tech Lead</em> (cargos sem família definida usam o conjunto
+          genérico). Já <strong>SoftSkill e Disciplina são iguais para todos</strong>, independentemente do cargo.</p>
         </section>
 
         <section class="tut-section">
@@ -1545,7 +1556,9 @@
   }
 
   function reportMemberIndividual(member, periodKey) {
-    const pillarsRows = Model.PILLARS.map((p) => {
+    const pillarsRows = Model.PILLARS.map((basePillar) => {
+      // HardSkill resolvido pela família do cargo; soft/discipline inalterados.
+      const p = Model.resolvePillar(member, basePillar.id);
       const comps = Model.compNames(p)
         .map((comp) => {
           const scores = Model.periodScores(member, periodKey)[p.id] || {};
@@ -1796,6 +1809,113 @@
     console.assert(
       avg === (4 + 2) / 6,
       'FEAT-003 selftest: pillarAverage(HardSkill, trimestreAtual) deve ser (4+2)/6'
+    );
+
+    // ---- HardSkill por família de cargo (FEAT-003) ----
+
+    // (d) cargoFamily deriva a família por prefixo, ignorando o nível.
+    console.assert(
+      Model.cargoFamily('Engenheiro DevOps Pleno') === 'devops',
+      "FEAT-003 selftest: cargoFamily('Engenheiro DevOps Pleno') deve ser 'devops'"
+    );
+    console.assert(
+      Model.cargoFamily('Analista de Cloud Senior') === 'cloud',
+      "FEAT-003 selftest: cargoFamily('Analista de Cloud Senior') deve ser 'cloud'"
+    );
+    console.assert(
+      Model.cargoFamily('Tech Lead') === 'techlead',
+      "FEAT-003 selftest: cargoFamily('Tech Lead') deve ser 'techlead'"
+    );
+    console.assert(
+      Model.cargoFamily('') === 'generico',
+      "FEAT-003 selftest: cargoFamily('') deve ser 'generico'"
+    );
+
+    // (e) hardPillarFor devolve as competências da família (devops inclui
+    // 'Containers / K8s' e 'Automação').
+    const devopsComps = Model.hardPillarFor({ role: 'Engenheiro DevOps Pleno' }).competencies.map(
+      (c) => c.name
+    );
+    console.assert(
+      devopsComps.includes('Containers / K8s') && devopsComps.includes('Automação'),
+      "FEAT-003 selftest: hardPillarFor(devops) deve conter 'Containers / K8s' e 'Automação'"
+    );
+
+    // (f) Migração via Store.clearHardSkill zera scores.hard preservando
+    // scores.soft e plan, e é idempotente (aplicar 2x == aplicar 1x).
+    if (Store.clearHardSkill) {
+      const mig = {
+        id: 'tm',
+        periods: {
+          '2025-Q1': {
+            scores: {
+              hard: { 'CI/CD': 5, 'Automação': 4 },
+              soft: { Ownership: 3 },
+            },
+            plan: [{ id: 'p1', title: 'obj', tasks: [] }],
+          },
+        },
+      };
+      Store.clearHardSkill(mig);
+      const sc = mig.periods['2025-Q1'].scores;
+      console.assert(
+        !('hard' in sc),
+        'FEAT-003 selftest: clearHardSkill deve remover scores.hard'
+      );
+      console.assert(
+        sc.soft && sc.soft.Ownership === 3,
+        'FEAT-003 selftest: clearHardSkill deve preservar scores.soft'
+      );
+      console.assert(
+        Array.isArray(mig.periods['2025-Q1'].plan) &&
+          mig.periods['2025-Q1'].plan[0] &&
+          mig.periods['2025-Q1'].plan[0].id === 'p1',
+        'FEAT-003 selftest: clearHardSkill deve preservar o plan'
+      );
+      // idempotência: segunda passagem não lança e mantém o resultado.
+      Store.clearHardSkill(mig);
+      const sc2 = mig.periods['2025-Q1'].scores;
+      console.assert(
+        !('hard' in sc2) && sc2.soft && sc2.soft.Ownership === 3,
+        'FEAT-003 selftest: clearHardSkill deve ser idempotente (soft/plan preservados)'
+      );
+    }
+
+    // (g) teamAverageByCompetency no HardSkill considera APENAS a mesma família
+    // do avaliado; para soft considera todos. Monta 2 devops + 1 cloud.
+    const d1 = {
+      id: 'd1',
+      role: 'Engenheiro DevOps Pleno',
+      periods: { [cur]: { scores: { hard: { 'CI/CD': 4 }, soft: { Ownership: 4 } }, plan: [] } },
+    };
+    const d2 = {
+      id: 'd2',
+      role: 'Engenheiro DevOps Senior',
+      periods: { [cur]: { scores: { hard: { 'CI/CD': 2 }, soft: { Ownership: 2 } }, plan: [] } },
+    };
+    const c1 = {
+      id: 'c1',
+      role: 'Analista de Cloud Pleno',
+      periods: { [cur]: { scores: { hard: { 'CI/CD': 5 }, soft: { Ownership: 5 } }, plan: [] } },
+    };
+    const synthTeam = [d1, d2, c1];
+    const hardPillar = Model.PILLARS.find((p) => p.id === 'hard');
+    const softPillar = Model.PILLARS.find((p) => p.id === 'soft');
+    // Para d1 (devops), eixos = competências devops; 'CI/CD' é a 1ª competência.
+    const hardAxes = Model.compNames(Model.hardPillarFor(d1));
+    const cicdIdx = hardAxes.indexOf('CI/CD');
+    const hardAvg = Model.teamAverageByCompetency(synthTeam, hardPillar, 'd1', cur);
+    console.assert(
+      cicdIdx >= 0 && hardAvg[cicdIdx] === 2,
+      'FEAT-003 selftest: média HardSkill de CI/CD deve usar só devops (apenas d2=2), ignorando o cloud'
+    );
+    // Soft: 'Ownership' é a 2ª competência (ordem fixa de PILLARS[soft]).
+    const softAxes = Model.compNames(softPillar);
+    const ownIdx = softAxes.indexOf('Ownership');
+    const softAvg = Model.teamAverageByCompetency(synthTeam, softPillar, 'd1', cur);
+    console.assert(
+      ownIdx >= 0 && softAvg[ownIdx] === (2 + 5) / 2,
+      'FEAT-003 selftest: média SoftSkill de Ownership deve considerar todos (d2=2 e c1=5 => 3.5)'
     );
 
     console.log('[FEAT-003] self-tests executados (ver asserts acima, se houver).');
