@@ -29,6 +29,8 @@
     'Analista de Processos Júnior',
     'Analista de Processos Pleno',
     'Analista de Processos Sênior',
+    'Coordenador de MSP',
+    'Coordenador de Projetos',
   ];
 
   // Rótulos da escala de notas (1..5), usados no Tutorial e como referência.
@@ -150,6 +152,24 @@
       { name: 'Qualidade & Testes', desc: 'Promove estratégia de testes e qualidade (cobertura, automação, prevenção de regressões).' },
       { name: 'Visão de sistema', desc: 'Enxerga o sistema de ponta a ponta, antecipando impactos entre componentes e equipes.' },
     ],
+    // Coordenador de MSP: foco em operação de serviços gerenciados.
+    coord_msp: [
+      { name: 'Gestão de SLA', desc: 'Garante o cumprimento de acordos de nível de serviço; acompanha metas e trata desvios.' },
+      { name: 'Gestão de incidentes', desc: 'Coordena resposta a incidentes (triagem, escalonamento, comunicação e pós-morte).' },
+      { name: 'Capacity & Disponibilidade', desc: 'Planeja capacidade e disponibilidade dos serviços para sustentar a demanda com estabilidade.' },
+      { name: 'Gestão de equipe técnica', desc: 'Organiza escalas, prioridades e desenvolvimento da equipe de operação.' },
+      { name: 'Relacionamento com cliente', desc: 'Conduz a relação com o cliente do serviço: expectativas, reportes e satisfação.' },
+      { name: 'Melhoria contínua (ITIL)', desc: 'Aplica práticas ITIL para evoluir processos de serviço e reduzir recorrências.' },
+    ],
+    // Coordenador de Projetos: foco em entrega de projetos.
+    coord_proj: [
+      { name: 'Gestão de escopo', desc: 'Define, controla e protege o escopo do projeto, tratando mudanças de forma estruturada.' },
+      { name: 'Cronograma & Prazos', desc: 'Planeja e acompanha o cronograma, dependências e marcos, mantendo os prazos sob controle.' },
+      { name: 'Gestão de riscos', desc: 'Identifica, avalia e mitiga riscos ao longo do ciclo do projeto.' },
+      { name: 'Gestão de stakeholders', desc: 'Mapeia e engaja partes interessadas com comunicação clara e alinhamento de expectativas.' },
+      { name: 'Orçamento & Custos', desc: 'Planeja e controla o orçamento do projeto, acompanhando custos e previsões.' },
+      { name: 'Metodologias (Ágil/PMBOK)', desc: 'Aplica metodologias de gestão de projetos (ágeis e tradicionais) conforme o contexto.' },
+    ],
     // Família padrão para cargos sem conjunto específico.
     generico: DEFAULT_HARDSKILL,
   };
@@ -168,6 +188,9 @@
     if (norm.indexOf('analista de cloud') === 0) return 'cloud';
     if (norm.indexOf('analista de processos') === 0) return 'processos';
     if (norm.indexOf('tech lead') === 0) return 'techlead';
+    // Coordenadores: detecta MSP e Projetos (prefixo "coordenador de ...")
+    if (norm.indexOf('coordenador de msp') === 0) return 'coord_msp';
+    if (norm.indexOf('coordenador de projetos') === 0) return 'coord_proj';
     return 'generico';
   }
 
