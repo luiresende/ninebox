@@ -243,6 +243,105 @@
     await reloadAndRender();
   });
 
+  // ------------------- Importar colaboradores via CSV ----------------------
+  // CSV com colunas nome,email,cargo (cabeçalho opcional; vírgula OU ponto-e-
+  // vírgula). Importa apenas o CADASTRO — não cria login (a pessoa faz "Criar
+  // conta") nem notas. Ignora e-mails inválidos e duplicados.
+  $('#btn-import-members').addEventListener('click', () => {
+    if (!canEdit()) return;
+    $('#csv-input').value = ''; // permite reimportar o mesmo arquivo
+    $('#csv-input').click();
+  });
+
+  $('#csv-input').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => importCsvText(String(reader.result || ''));
+    reader.onerror = () => alert('Não foi possível ler o arquivo.');
+    reader.readAsText(file, 'UTF-8');
+  });
+
+  // divide uma linha de CSV respeitando aspas e vírgula OU ponto-e-vírgula
+  function splitCsvLine(line) {
+    const delim = line.indexOf(';') >= 0 && line.indexOf(',') < 0 ? ';' : ',';
+    const out = [];
+    let cur = '';
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (ch === delim && !inQ) {
+        out.push(cur); cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    out.push(cur);
+    return out.map((s) => s.trim());
+  }
+
+  async function importCsvText(text) {
+    const rows = text
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    if (rows.length === 0) {
+      alert('Arquivo vazio.');
+      return;
+    }
+
+    // detecta cabeçalho (se a 1ª linha tiver "email"/"e-mail")
+    let start = 0;
+    const first = rows[0].toLowerCase();
+    if (first.includes('email') || first.includes('e-mail') || first.includes('nome')) {
+      start = 1;
+    }
+
+    const emailRe = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+    const existing = new Set(members.map((m) => m.id));
+    let added = 0;
+    const skipped = [];
+
+    for (let r = start; r < rows.length; r++) {
+      const cols = splitCsvLine(rows[r]);
+      // formato esperado: nome, email, cargo
+      const name = (cols[0] || '').trim();
+      const emailRaw = (cols[1] || '').trim();
+      const roleTxt = (cols[2] || '').trim();
+      const email = Store.normEmail ? Store.normEmail(emailRaw) : emailRaw.toLowerCase();
+
+      if (!name || !emailRe.test(email)) {
+        skipped.push('linha ' + (r + 1) + ' (nome/e-mail inválido)');
+        continue;
+      }
+      if (existing.has(email)) {
+        skipped.push(email + ' (já existe)');
+        continue;
+      }
+
+      const m = { id: email, email, name, role: roleTxt, periods: {} };
+      await Store.save(m);
+      members.push(m);
+      existing.add(email);
+      added++;
+    }
+
+    await reloadAndRender();
+
+    let msg = added + ' colaborador(es) importado(s).';
+    if (skipped.length) {
+      msg += '\n\nIgnorados (' + skipped.length + '):\n' + skipped.slice(0, 15).join('\n');
+      if (skipped.length > 15) msg += '\n…';
+    }
+    msg +=
+      '\n\nObservação: a importação cria apenas o cadastro. Para logar, cada ' +
+      'colaborador ainda precisa criar a conta na tela de "Criar conta".';
+    alert(msg);
+  }
+
   // --------------------------- View: Avaliação -----------------------------
   function populateMemberSelect() {
     const sel = $('#member-select');
@@ -799,6 +898,7 @@
     renderQuarterBar('q-sel-plan');
     populatePlanSelect();
     $('#btn-add-objective').classList.toggle('hidden', !canEdit());
+    $('#btn-suggest').classList.toggle('hidden', !canEdit());
 
     const member = currentPlanMember();
     const empty = $('#plan-empty');
@@ -1022,6 +1122,90 @@
     await persistPlan(member);
   });
 
+  // ------------------- Assistente de sugestões (sem IA externa) ------------
+  // Abre um painel com objetivos/tarefas sugeridos a partir das notas fracas
+  // do trimestre. O líder escolhe o que adicionar — nada entra automático.
+  let suggestionItems = [];
+
+  function openSuggestModal() {
+    if (!canEdit()) return;
+    const member = currentPlanMember();
+    if (!member) {
+      alert('Selecione um colaborador primeiro.');
+      return;
+    }
+
+    suggestionItems = Model.suggestObjectives(member, selectedPeriod, 6);
+    const listEl = $('#suggest-list');
+    listEl.innerHTML = '';
+
+    if (suggestionItems.length === 0) {
+      listEl.innerHTML =
+        '<p class="empty-state">Não há notas neste trimestre para gerar sugestões. ' +
+        'Avalie o colaborador primeiro.</p>';
+      $('#btn-apply-suggest').disabled = true;
+    } else {
+      $('#btn-apply-suggest').disabled = false;
+      $('#suggest-sub').textContent =
+        'Baseadas nas competências mais fracas em ' + selectedPeriod +
+        '. Selecione o que deseja adicionar ao plano — você pode editar depois.';
+
+      suggestionItems.forEach((s, idx) => {
+        const card = document.createElement('div');
+        card.className = 'suggest-item';
+        const tasksHtml = s.tasks
+          .map((t) => `<li>${escapeHtml(t)}</li>`)
+          .join('');
+        card.innerHTML = `
+          <label class="suggest-head">
+            <input type="checkbox" class="suggest-cb" data-idx="${idx}" checked />
+            <span class="suggest-title">${escapeHtml(s.title)}</span>
+          </label>
+          <div class="suggest-reason">${escapeHtml(s.desc)}</div>
+          <ul class="suggest-tasks">${tasksHtml}</ul>
+        `;
+        listEl.appendChild(card);
+      });
+    }
+
+    $('#suggest-modal').classList.remove('hidden');
+  }
+
+  function closeSuggestModal() {
+    $('#suggest-modal').classList.add('hidden');
+    suggestionItems = [];
+  }
+
+  $('#btn-suggest').addEventListener('click', openSuggestModal);
+  $('#btn-cancel-suggest').addEventListener('click', closeSuggestModal);
+  $('#suggest-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'suggest-modal') closeSuggestModal();
+  });
+
+  $('#btn-apply-suggest').addEventListener('click', async () => {
+    const member = currentPlanMember();
+    if (!member) return;
+    const checked = $$('#suggest-list .suggest-cb').filter((cb) => cb.checked);
+    if (checked.length === 0) {
+      closeSuggestModal();
+      return;
+    }
+    const period = memberPeriod(member, true);
+    period.plan = period.plan || [];
+    checked.forEach((cb) => {
+      const s = suggestionItems[Number(cb.dataset.idx)];
+      if (!s) return;
+      period.plan.push({
+        id: uid(),
+        title: s.title,
+        desc: s.desc,
+        tasks: s.tasks.map((text) => ({ id: uid(), text, done: false })),
+      });
+    });
+    closeSuggestModal();
+    await persistPlan(member);
+  });
+
   // --------------------------- View: Evolução ------------------------------
   // Gráfico de linhas com a média de cada pilar por trimestre, para o
   // colaborador selecionado. Líder escolhe qualquer colaborador; o colaborador
@@ -1227,6 +1411,145 @@
   });
 
   // --------------------------- Papel / UI ----------------------------------
+  // --------------------------- Relatórios (PDF via impressão) --------------
+  // Abre uma janela com o relatório formatado e dispara a impressão do
+  // navegador — o usuário escolhe "Salvar como PDF".
+  function reportStyles() {
+    return `
+      <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 32px; }
+        h1 { font-size: 22px; margin: 0 0 4px; }
+        h2 { font-size: 16px; margin: 24px 0 8px; border-bottom: 2px solid #333; padding-bottom: 4px; }
+        .muted { color: #666; font-size: 13px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+        th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; }
+        th { background: #f0f0f0; }
+        .scorecards { display: flex; gap: 16px; margin: 12px 0; }
+        .sc { border: 1px solid #ccc; border-radius: 8px; padding: 10px 16px; }
+        .sc .l { font-size: 12px; color: #666; }
+        .sc .v { font-size: 20px; font-weight: bold; }
+        .obj { border: 1px solid #ccc; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+        .obj .t { font-weight: bold; }
+        .obj .p { font-size: 12px; color: #666; }
+        ul { margin: 6px 0 0 18px; padding: 0; font-size: 13px; }
+        .foot { margin-top: 28px; font-size: 11px; color: #999; }
+        @media print { body { margin: 12mm; } button { display: none; } }
+      </style>`;
+  }
+
+  function openReportWindow(title, bodyHtml) {
+    const w = window.open('', '_blank');
+    if (!w) {
+      alert('O navegador bloqueou a janela do relatório. Permita pop-ups para este site.');
+      return;
+    }
+    w.document.write(
+      '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>' +
+        title +
+        '</title>' +
+        reportStyles() +
+        '</head><body>' +
+        bodyHtml +
+        '<div class="foot">Gerado por PDI Cloud em ' +
+        new Date().toLocaleString('pt-BR') +
+        '</div>' +
+        '<script>window.onload=function(){setTimeout(function(){window.print();},300);};<\/script>' +
+        '</body></html>'
+    );
+    w.document.close();
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
+    );
+  }
+
+  function reportMemberIndividual(member, periodKey) {
+    const pillarsRows = Model.PILLARS.map((p) => {
+      const comps = Model.compNames(p)
+        .map((comp) => {
+          const scores = Model.periodScores(member, periodKey)[p.id] || {};
+          const v = scores[comp];
+          return `<tr><td>${esc(comp)}</td><td>${v == null ? '—' : v}</td></tr>`;
+        })
+        .join('');
+      return `<h2>${esc(p.name)} — ${esc(p.subtitle)} (média ${Model.pillarAverage(member, p, periodKey).toFixed(2)})</h2>
+        <table><thead><tr><th>Competência</th><th>Nota (1-5)</th></tr></thead><tbody>${comps}</tbody></table>`;
+    }).join('');
+
+    const plan = (member.periods && member.periods[periodKey] && member.periods[periodKey].plan) || [];
+    const planHtml = plan.length
+      ? plan
+          .map((o) => {
+            const total = (o.tasks || []).length;
+            const done = (o.tasks || []).filter((t) => t.done).length;
+            const pct = total ? Math.round((done / total) * 100) : 0;
+            const tasks = (o.tasks || [])
+              .map((t) => `<li>${t.done ? '☑' : '☐'} ${esc(t.text)}</li>`)
+              .join('');
+            return `<div class="obj"><div class="t">${esc(o.title)} — ${pct}%</div>
+              ${o.desc ? `<div class="p">${esc(o.desc)}</div>` : ''}
+              <ul>${tasks}</ul></div>`;
+          })
+          .join('')
+      : '<p class="muted">Nenhum objetivo cadastrado neste trimestre.</p>';
+
+    return (
+      `<h1>Relatório de Avaliação</h1>` +
+      `<div class="muted">${esc(member.name)}${member.role ? ' — ' + esc(member.role) : ''} · ${esc(member.email || member.id)} · Trimestre ${esc(periodKey)}</div>` +
+      `<div class="scorecards">
+        <div class="sc"><div class="l">Desempenho</div><div class="v">${Model.performanceScore(member, periodKey).toFixed(2)}</div></div>
+        <div class="sc"><div class="l">Potencial</div><div class="v">${Model.potentialScore(member, periodKey).toFixed(2)}</div></div>
+        <div class="sc"><div class="l">Nine Box</div><div class="v">${esc(Model.nineBoxLabel(member, periodKey))}</div></div>
+      </div>` +
+      pillarsRows +
+      `<h2>Plano de Desenvolvimento</h2>` +
+      planHtml
+    );
+  }
+
+  function reportTeam(periodKey) {
+    const rows = members
+      .map((m) => {
+        return `<tr>
+          <td>${esc(m.name)}</td>
+          <td>${esc(m.role || '—')}</td>
+          <td>${Model.performanceScore(m, periodKey).toFixed(2)}</td>
+          <td>${Model.potentialScore(m, periodKey).toFixed(2)}</td>
+          <td>${esc(Model.nineBoxLabel(m, periodKey))}</td>
+        </tr>`;
+      })
+      .join('');
+    return (
+      `<h1>Relatório do Time — Nine Box</h1>` +
+      `<div class="muted">Trimestre ${esc(periodKey)} · ${members.length} colaborador(es)</div>` +
+      `<table><thead><tr><th>Colaborador</th><th>Cargo</th><th>Desempenho</th><th>Potencial</th><th>Quadrante</th></tr></thead>` +
+      `<tbody>${rows}</tbody></table>`
+    );
+  }
+
+  $('#btn-report-member').addEventListener('click', () => {
+    const member = members.find((m) => m.id === selectedId);
+    if (!member) {
+      alert('Selecione um colaborador para gerar o relatório.');
+      return;
+    }
+    openReportWindow(
+      'Relatório - ' + member.name,
+      reportMemberIndividual(member, selectedPeriod)
+    );
+  });
+
+  $('#btn-report-team').addEventListener('click', () => {
+    if (members.length === 0) {
+      alert('Não há colaboradores para o relatório.');
+      return;
+    }
+    openReportWindow('Relatório do Time', reportTeam(selectedPeriod));
+  });
+
   // Mostra/esconde recursos de edição conforme o papel do usuário.
   function applyRoleToUI() {
     const leader = canEdit();
@@ -1236,6 +1559,8 @@
     $('#member-select').classList.toggle('hidden', !leader);
     // aba de gestão de usuários/papéis só para líderes
     $('#nav-users').classList.toggle('hidden', !leader);
+    // importar CSV só para líderes
+    $('#btn-import-members').classList.toggle('hidden', !leader);
 
     // rótulo do usuário na sidebar
     const user = Store.currentUser;
@@ -1419,10 +1744,13 @@
         return;
       }
       applyRoleToUI();
-      // colaborador abre direto na própria avaliação
       if (!canEdit()) {
+        // colaborador abre direto na própria avaliação
         selectedId = Store.emailToId(user.email);
         switchView('evaluate');
+      } else {
+        // líder abre no Nine Box (visão geral do time)
+        switchView('ninebox');
       }
       showApp();
       await reloadAndRender();

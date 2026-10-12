@@ -25,3 +25,6 @@ firebase-debug.log
 # Artefatos de workflows de desenvolvimento (planos, revisões) e worktrees
 .agents/
 .worktrees/
+
+# CSV de exemplo (teste local de importação)
+exemplo-colaboradores.csv

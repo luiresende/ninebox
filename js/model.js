@@ -192,6 +192,234 @@
     return nineBoxCell(member, periodKey).name;
   }
 
+  // ==========================================================================
+  //  ASSISTENTE DE SUGESTÕES (motor baseado em regras — sem IA externa/custo)
+  // --------------------------------------------------------------------------
+  //  Olha as notas do colaborador no trimestre e, para cada competência fraca
+  //  (nota <= 3 ou sem nota), sugere um OBJETIVO com TAREFAS a partir deste
+  //  catálogo. O líder revisa e escolhe o que adicionar ao PDI.
+  //  Edite os textos abaixo livremente para adequar à realidade do time.
+  // ==========================================================================
+  const SUGGEST_THRESHOLD = 3; // competência "fraca" = nota <= 3 (ou sem nota)
+
+  // catálogo indexado pelo NOME exato da competência (ver PILLARS acima)
+  const SUGGESTION_CATALOG = {
+    // ---- HardSkill (DevOps & Cloud) ----
+    'Cloud / AWS': {
+      title: 'Elevar proficiência em Cloud/AWS',
+      tasks: [
+        'Concluir um curso ou trilha oficial de fundamentos de AWS',
+        'Desenhar e documentar a arquitetura de um serviço usando Well-Architected',
+        'Configurar IAM com least privilege em um projeto real',
+      ],
+    },
+    'CI/CD': {
+      title: 'Fortalecer práticas de CI/CD',
+      tasks: [
+        'Criar um pipeline completo (build, teste, deploy) para um serviço',
+        'Adicionar gates de qualidade (lint, testes, cobertura) ao pipeline',
+        'Implementar deploy automatizado em pelo menos um ambiente',
+      ],
+    },
+    'IaC (Terraform)': {
+      title: 'Dominar Infraestrutura como Código (Terraform)',
+      tasks: [
+        'Migrar um recurso provisionado manualmente para Terraform',
+        'Criar um módulo reutilizável (ex: VPC ou bucket)',
+        'Configurar remote state com bloqueio (ex: S3 + DynamoDB)',
+      ],
+    },
+    'Containers / K8s': {
+      title: 'Aprofundar em Containers e Kubernetes',
+      tasks: [
+        'Containerizar uma aplicação com Dockerfile otimizado',
+        'Implantar a aplicação em um cluster (deployment + service)',
+        'Praticar troubleshooting de pods (logs, describe, exec)',
+      ],
+    },
+    'Observabilidade': {
+      title: 'Melhorar observabilidade de sistemas',
+      tasks: [
+        'Instrumentar uma aplicação com métricas e logs estruturados',
+        'Criar um dashboard com os principais indicadores do serviço',
+        'Configurar um alerta acionável para um sintoma de falha',
+      ],
+    },
+    'Segurança': {
+      title: 'Reforçar práticas de Segurança',
+      tasks: [
+        'Revisar e aplicar gestão de segredos (sem credenciais no código)',
+        'Executar uma análise de vulnerabilidades em uma aplicação',
+        'Aplicar hardening/least privilege em um ambiente',
+      ],
+    },
+    // ---- SoftSkill (Leadership Principles) ----
+    'Customer Obsession': {
+      title: 'Desenvolver foco no cliente',
+      tasks: [
+        'Mapear as principais dores de um cliente/stakeholder do seu produto',
+        'Propor uma melhoria partindo da necessidade do cliente',
+        'Coletar feedback direto de um usuário e agir sobre ele',
+      ],
+    },
+    'Ownership': {
+      title: 'Fortalecer senso de dono (Ownership)',
+      tasks: [
+        'Assumir a ponta a ponta de uma entrega, incluindo o pós-deploy',
+        'Documentar e resolver um problema recorrente do time',
+        'Antecipar um risco e propor um plano de mitigação',
+      ],
+    },
+    'Invent and Simplify': {
+      title: 'Praticar inovação e simplificação',
+      tasks: [
+        'Identificar um processo complexo e propor uma versão mais simples',
+        'Trazer uma ideia nova para resolver um problema do time',
+        'Eliminar um passo manual automatizando-o',
+      ],
+    },
+    'Deliver Results': {
+      title: 'Melhorar a entrega de resultados',
+      tasks: [
+        'Definir metas claras e mensuráveis para a próxima entrega',
+        'Quebrar um objetivo grande em marcos semanais',
+        'Comunicar riscos de prazo cedo e propor alternativas',
+      ],
+    },
+    'Earn Trust': {
+      title: 'Construir confiança (Earn Trust)',
+      tasks: [
+        'Dar e pedir feedback de forma estruturada com um colega',
+        'Praticar escuta ativa em reuniões (resumir antes de responder)',
+        'Assumir publicamente um erro e o aprendizado dele',
+      ],
+    },
+    'Dive Deep': {
+      title: 'Desenvolver profundidade de análise (Dive Deep)',
+      tasks: [
+        'Investigar a causa raiz de um incidente (5 porquês)',
+        'Validar uma decisão com dados antes de concluir',
+        'Auditar uma métrica suspeita até entender a divergência',
+      ],
+    },
+    // ---- Disciplina ----
+    'Pontualidade': {
+      title: 'Melhorar pontualidade e presença',
+      tasks: [
+        'Chegar e iniciar compromissos no horário por 4 semanas seguidas',
+        'Usar lembretes/agenda para compromissos recorrentes',
+        'Comunicar com antecedência quando houver imprevisto',
+      ],
+    },
+    'Organização': {
+      title: 'Aprimorar organização do trabalho',
+      tasks: [
+        'Manter o backlog pessoal priorizado e atualizado',
+        'Adotar um método de gestão de tarefas (ex: Kanban pessoal)',
+        'Revisar prioridades no início de cada semana',
+      ],
+    },
+    'Cumprimento de prazos': {
+      title: 'Melhorar cumprimento de prazos',
+      tasks: [
+        'Estimar tarefas e comparar o estimado x realizado',
+        'Sinalizar riscos de atraso assim que identificados',
+        'Entregar dentro do prazo acordado em um ciclo completo',
+      ],
+    },
+    'Documentação': {
+      title: 'Fortalecer a cultura de documentação',
+      tasks: [
+        'Escrever um runbook para um processo que você domina',
+        'Documentar as decisões técnicas de uma entrega (ADR)',
+        'Revisar e atualizar uma documentação desatualizada',
+      ],
+    },
+    'Processos': {
+      title: 'Aderir e aprimorar processos do time',
+      tasks: [
+        'Seguir o fluxo de code review em todas as entregas do ciclo',
+        'Propor uma melhoria em um ritual ou processo do time',
+        'Documentar um processo que hoje é informal',
+      ],
+    },
+    'Proatividade': {
+      title: 'Desenvolver proatividade',
+      tasks: [
+        'Identificar e propor a solução de um problema sem ser solicitado',
+        'Assumir uma melhoria técnica fora da demanda imediata',
+        'Oferecer ajuda a um colega em um ponto de bloqueio',
+      ],
+    },
+  };
+
+  // Objetivo de APROFUNDAMENTO quando a competência já vai bem (nota 4-5),
+  // usado como fallback para levar de "avançado" a "experiente".
+  function deepenTemplate(compName) {
+    return {
+      title: 'Tornar-se referência em ' + compName,
+      tasks: [
+        'Mentorar um colega na competência "' + compName + '"',
+        'Definir um padrão/boa prática do time para "' + compName + '"',
+        'Compartilhar conhecimento (talk, artigo ou dojo) sobre "' + compName + '"',
+      ],
+    };
+  }
+
+  // Gera sugestões de objetivos a partir das notas do trimestre.
+  // Retorna lista ordenada da competência mais fraca para a mais forte:
+  //   [{ pillarId, pillarName, competency, score, title, tasks:[string] }]
+  // - Prioriza competências com nota <= SUGGEST_THRESHOLD (ou sem nota).
+  // - Se TODAS vão bem, sugere aprofundamento das mais baixas mesmo assim.
+  function suggestObjectives(member, periodKey, limit) {
+    const scores = periodScores(member, periodKey);
+    const items = [];
+    PILLARS.forEach((pillar) => {
+      const pScores = scores[pillar.id] || {};
+      pillar.competencies.forEach((comp) => {
+        const raw = Number(pScores[comp.name]);
+        const has = Number.isFinite(raw);
+        const score = has ? raw : 0; // sem nota conta como mais fraco
+        items.push({
+          pillarId: pillar.id,
+          pillarName: pillar.name,
+          competency: comp.name,
+          score: has ? raw : null,
+          _sort: score,
+          weak: !has || raw <= SUGGEST_THRESHOLD,
+        });
+      });
+    });
+
+    // ordena da mais fraca para a mais forte
+    items.sort((a, b) => a._sort - b._sort);
+
+    // se existe alguma fraca, sugere só as fracas; senão, aprofunda as menores
+    const anyWeak = items.some((i) => i.weak);
+    const chosen = (anyWeak ? items.filter((i) => i.weak) : items).slice(
+      0,
+      limit || 6
+    );
+
+    return chosen.map((i) => {
+      const tpl =
+        i.weak && SUGGESTION_CATALOG[i.competency]
+          ? SUGGESTION_CATALOG[i.competency]
+          : deepenTemplate(i.competency);
+      return {
+        pillarId: i.pillarId,
+        pillarName: i.pillarName,
+        competency: i.competency,
+        score: i.score,
+        title: tpl.title,
+        desc:
+          (i.score == null ? 'Sem nota' : 'Nota ' + i.score) +
+          ' em ' + i.competency + ' (' + i.pillarName + ')',
+        tasks: tpl.tasks.slice(),
+      };
+    });
+  }
+
   window.Model = {
     SCALE_MIN,
     SCALE_MAX,
@@ -208,5 +436,7 @@
     nineBoxCell,
     nineBoxLabel,
     band,
+    suggestObjectives,
+    SUGGESTION_CATALOG,
   };
 })();

@@ -57,14 +57,14 @@
         <h1>PDI Cloud</h1>
       </div>
       <nav class="nav">
-        <button class="nav-item active" data-view="team">
+        <button class="nav-item active" data-view="ninebox">
+          <span class="nav-icon">🎯</span> Nine Box
+        </button>
+        <button class="nav-item" data-view="team">
           <span class="nav-icon">👥</span> Time
         </button>
         <button class="nav-item" data-view="evaluate">
           <span class="nav-icon">📝</span> Avaliação
-        </button>
-        <button class="nav-item" data-view="ninebox">
-          <span class="nav-icon">🎯</span> Nine Box
         </button>
         <button class="nav-item" data-view="plan">
           <span class="nav-icon">📈</span> Plano de Desenvolvimento
@@ -91,9 +91,10 @@
 
     <main class="app-main">
     <!-- ====================== VIEW: TIME ====================== -->
-    <section id="view-team" class="view active">
+    <section id="view-team" class="view">
       <div class="view-head">
         <h2>Membros do time</h2>
+        <button id="btn-import-members" class="btn">⬆ Importar CSV</button>
         <button id="btn-add-member" class="btn btn-primary">+ Novo colaborador</button>
       </div>
       <div id="member-list" class="member-grid"></div>
@@ -108,6 +109,7 @@
         <h2>Avaliação</h2>
         <div class="quarter-bar" id="q-sel-evaluate"></div>
         <select id="member-select" class="select"></select>
+        <button id="btn-report-member" class="btn">🖨 Relatório</button>
       </div>
 
       <div id="evaluate-empty" class="empty-state">
@@ -137,11 +139,12 @@
     </section>
 
     <!-- ===================== VIEW: NINE BOX ==================== -->
-    <section id="view-ninebox" class="view">
+    <section id="view-ninebox" class="view active">
       <div class="view-head">
         <h2>Matriz Nine Box</h2>
         <span class="hint">Potencial (vertical) × Desempenho (horizontal)</span>
         <div class="quarter-bar" id="q-sel-ninebox"></div>
+        <button id="btn-report-team" class="btn">🖨 Relatório do time</button>
       </div>
       <div class="ninebox-wrap">
         <canvas id="ninebox-chart"></canvas>
@@ -184,6 +187,7 @@
         <h2>Plano de Desenvolvimento</h2>
         <div class="quarter-bar" id="q-sel-plan"></div>
         <select id="plan-member-select" class="select"></select>
+        <button id="btn-suggest" class="btn btn-ai hidden">✨ Sugerir objetivos</button>
         <button id="btn-add-objective" class="btn btn-primary hidden">+ Novo objetivo</button>
       </div>
 
@@ -244,6 +248,25 @@
       </div>
     </div>
   </div>
+
+  <!-- =============== MODAL: SUGESTÕES (assistente) =============== -->
+  <div id="suggest-modal" class="modal hidden">
+    <div class="modal-card modal-wide">
+      <h3>Sugestões de objetivos</h3>
+      <p class="suggest-sub" id="suggest-sub">
+        Baseadas nas competências mais fracas do trimestre. Selecione o que deseja
+        adicionar ao plano — você pode editar depois.
+      </p>
+      <div id="suggest-list" class="suggest-list"></div>
+      <div class="modal-actions">
+        <button id="btn-cancel-suggest" class="btn">Cancelar</button>
+        <button id="btn-apply-suggest" class="btn btn-primary">Adicionar selecionados</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- input oculto para importar CSV de colaboradores -->
+  <input id="csv-input" type="file" accept=".csv,text/csv" style="display:none" />
 
   <!-- ===================== MODAL: COLABORADOR ================= -->
   <div id="member-modal" class="modal hidden">
