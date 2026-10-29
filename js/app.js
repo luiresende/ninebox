@@ -61,6 +61,7 @@
     else if (v === 'ninebox') renderNineBox();
     else if (v === 'plan') renderPlan();
     else if (v === 'evolution') renderEvolution();
+    else if (v === 'team') renderTeam();
   }
 
   // Renderiza a barra de navegação de trimestre (anterior / rótulo / próximo)
@@ -142,24 +143,43 @@
   }
 
   // --------------------------- View: Time ----------------------------------
+  // Mapeia o status de progresso (Model.evaluationProgress) para o texto e a
+  // classe CSS do selo exibido no card do colaborador na view Time.
+  function progressBadge(prog) {
+    if (prog.status === 'completa') {
+      return { cls: 'prog-done', text: 'Completa' };
+    }
+    if (prog.status === 'parcial') {
+      return { cls: 'prog-partial', text: 'Parcial ' + prog.scored + '/' + prog.total };
+    }
+    return { cls: 'prog-none', text: 'Não iniciada' };
+  }
+
   function renderTeam() {
     const list = $('#member-list');
     const empty = $('#empty-team');
+    const summary = $('#team-progress-summary');
     list.innerHTML = '';
 
     if (members.length === 0) {
       empty.classList.remove('hidden');
+      if (summary) summary.textContent = '';
       return;
     }
     empty.classList.add('hidden');
 
+    let done = 0;
     members.forEach((m) => {
+      const prog = Model.evaluationProgress(m, selectedPeriod);
+      if (prog.status === 'completa') done += 1;
+      const badge = progressBadge(prog);
       const card = document.createElement('div');
       card.className = 'member-card';
       card.innerHTML = `
         <div class="avatar">${initials(m.name)}</div>
         <div class="m-name">${escapeHtml(m.name)}</div>
         <div class="m-role">${escapeHtml(m.role || '—')}</div>
+        <span class="prog-badge ${badge.cls}">${badge.text}</span>
         <span class="m-box">${Model.nineBoxLabel(m, selectedPeriod)}</span>
       `;
       if (canEdit()) {
@@ -170,6 +190,8 @@
       }
       list.appendChild(card);
     });
+
+    if (summary) summary.textContent = done + ' de ' + members.length + ' avaliados';
   }
 
   function escapeHtml(s) {
@@ -433,7 +455,9 @@
     members.forEach((m) => {
       const opt = document.createElement('option');
       opt.value = m.id;
-      opt.textContent = m.name;
+      // sufixo pt-BR com o progresso do trimestre selecionado (não altera value)
+      const prog = Model.evaluationProgress(m, selectedPeriod);
+      opt.textContent = m.name + ' (' + prog.status + ')';
       sel.appendChild(opt);
     });
     if (!selectedId || !members.find((m) => m.id === selectedId)) {
@@ -465,6 +489,10 @@
     empty.classList.add('hidden');
     body.classList.remove('hidden');
 
+    // Quick-start do líder: copiar notas do trimestre anterior quando o atual
+    // está vazio e o anterior tem notas (ver renderCopyPrevButton).
+    renderCopyPrevButton(member);
+
     // Scoreboard (do trimestre selecionado)
     $('#score-performance').textContent = fmt(Model.performanceScore(member, selectedPeriod));
     $('#score-potential').textContent = fmt(Model.potentialScore(member, selectedPeriod));
@@ -481,6 +509,47 @@
     });
     // Desenha os radares depois que os canvases estão no DOM
     PILLARS.forEach((basePillar) => drawRadar(member, Model.resolvePillar(member, basePillar.id)));
+  }
+
+  // Mostra (somente para o líder) o botão "Copiar notas do trimestre anterior"
+  // quando o trimestre atual não tem nenhuma nota e o anterior tem. Copia em
+  // profundidade as notas do trimestre anterior para o atual e persiste.
+  function renderCopyPrevButton(member) {
+    const holder = $('#copy-prev-holder');
+    if (!holder) return;
+    holder.innerHTML = '';
+    holder.classList.add('hidden');
+
+    if (!canEdit()) return;
+
+    const curr = Model.evaluationProgress(member, selectedPeriod);
+    const prevKey = shiftPeriod(selectedPeriod, -1);
+    const prevProg = Model.evaluationProgress(member, prevKey);
+    if (curr.scored !== 0 || prevProg.scored <= 0) return;
+
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.type = 'button';
+    btn.textContent = '⧉ Copiar notas do trimestre anterior';
+    btn.title = 'Copia as notas de ' + prevKey + ' para ' + selectedPeriod;
+    btn.addEventListener('click', async () => {
+      // se o trimestre atual já tiver alguma nota, confirma antes de sobrescrever
+      const nowProg = Model.evaluationProgress(member, selectedPeriod);
+      if (nowProg.scored > 0 &&
+        !confirm('O trimestre atual já possui notas. Substituir pelas notas de ' + prevKey + '?')) {
+        return;
+      }
+      const prev = (member.periods && member.periods[prevKey]) || { scores: {} };
+      const period = memberPeriod(member, true);
+      period.scores = JSON.parse(JSON.stringify(prev.scores || {}));
+      await Store.save(member);
+      const idx = members.findIndex((m) => m.id === member.id);
+      if (idx >= 0) members[idx] = member;
+      renderEvaluate();
+    });
+
+    holder.appendChild(btn);
+    holder.classList.remove('hidden');
   }
 
   function buildPillarCard(member, pillar) {
@@ -508,6 +577,7 @@
     pillar.competencies.forEach((comp) => {
       const row = document.createElement('div');
       row.className = 'comp-row';
+      row.tabIndex = 0; // linha focável para navegação/atalhos de teclado
       const current = memberPeriod(member, false).scores?.[pillar.id]?.[comp.name];
 
       // nome + descrição logo abaixo
@@ -535,6 +605,27 @@
           dot.title = 'Somente leitura';
         }
         controls.appendChild(dot);
+      }
+
+      // Realce visual ao focar; atalhos de teclado só para o líder.
+      row.addEventListener('focus', () => row.classList.add('focused'));
+      row.addEventListener('blur', () => row.classList.remove('focused'));
+      if (canEdit()) {
+        row.addEventListener('keydown', (e) => {
+          const key = e.key;
+          if (key >= '1' && key <= '5') {
+            e.preventDefault();
+            setScore(member, pillar, comp.name, Number(key));
+          } else if (key === 'ArrowUp' || key === 'ArrowLeft') {
+            e.preventDefault();
+            const prev = row.previousElementSibling;
+            if (prev && prev.classList.contains('comp-row')) prev.focus();
+          } else if (key === 'ArrowDown' || key === 'ArrowRight') {
+            e.preventDefault();
+            const next = row.nextElementSibling;
+            if (next && next.classList.contains('comp-row')) next.focus();
+          }
+        });
       }
 
       row.appendChild(info);
@@ -1925,6 +2016,54 @@
     );
 
     console.log('[FEAT-003] self-tests executados (ver asserts acima, se houver).');
+
+    // ---- Progresso de avaliação (FEAT-001) ----
+    // Monta as notas resolvendo as competências de cada pilar para o cargo, de
+    // modo que "completa" cubra todas as competências (hard por família).
+    const epRole = 'Engenheiro DevOps Pleno';
+    const epHard = Model.compNames(Model.hardPillarFor({ role: epRole }));
+    const epSoft = Model.compNames(Model.PILLARS.find((p) => p.id === 'soft'));
+    const epDisc = Model.compNames(Model.PILLARS.find((p) => p.id === 'discipline'));
+    const fillAll = (names) => names.reduce((o, n) => ((o[n] = 3), o), {});
+
+    // (a) todas as competências pontuadas => 'completa' e scored === total.
+    const epFull = {
+      id: 'ep1',
+      role: epRole,
+      periods: { [cur]: { scores: { hard: fillAll(epHard), soft: fillAll(epSoft), discipline: fillAll(epDisc) }, plan: [] } },
+    };
+    const epFullProg = Model.evaluationProgress(epFull, cur);
+    console.assert(
+      epFullProg.status === 'completa' && epFullProg.scored === epFullProg.total &&
+        epFullProg.total === epHard.length + epSoft.length + epDisc.length,
+      "FEAT-001 selftest: evaluationProgress com todas as competências deve ser 'completa' (scored === total)"
+    );
+
+    // (b) exatamente uma competência pontuada => 'parcial'.
+    const epPartial = {
+      id: 'ep2',
+      role: epRole,
+      periods: { [cur]: { scores: { hard: { [epHard[0]]: 4 } }, plan: [] } },
+    };
+    const epPartialProg = Model.evaluationProgress(epPartial, cur);
+    console.assert(
+      epPartialProg.status === 'parcial' && epPartialProg.scored === 1,
+      "FEAT-001 selftest: evaluationProgress com uma competência deve ser 'parcial' (scored === 1)"
+    );
+
+    // (c) trimestre vazio => 'não iniciada' e scored === 0.
+    const epEmpty = {
+      id: 'ep3',
+      role: epRole,
+      periods: { [cur]: { scores: {}, plan: [] } },
+    };
+    const epEmptyProg = Model.evaluationProgress(epEmpty, cur);
+    console.assert(
+      epEmptyProg.status === 'não iniciada' && epEmptyProg.scored === 0,
+      "FEAT-001 selftest: evaluationProgress com período vazio deve ser 'não iniciada' (scored === 0)"
+    );
+
+    console.log('[FEAT-001] self-tests executados (ver asserts acima, se houver).');
   }
 
   // --------------------------- Bootstrap -----------------------------------

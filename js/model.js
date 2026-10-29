@@ -309,6 +309,32 @@
     });
   }
 
+  // Progresso de avaliação de um colaborador em um trimestre: quantas das
+  // competências dos 3 pilares já receberam uma NOTA DE FATO (número finito).
+  // Resolve o pilar 'hard' pela família do membro (soft/discipline são fixos).
+  // Diferente de pillarAverage, aqui competência SEM nota NÃO conta — só conta
+  // quando Number.isFinite(Number(v)) é verdadeiro. Retorna:
+  //   { scored, total, status } onde status ∈
+  //   'não iniciada' (scored === 0) | 'completa' (scored === total) | 'parcial'.
+  function evaluationProgress(member, periodKey) {
+    const scoresByPillar = periodScores(member, periodKey);
+    let total = 0;
+    let scored = 0;
+    PILLARS.forEach((basePillar) => {
+      const resolved = resolvePillar(member, basePillar.id);
+      const scores = (scoresByPillar && scoresByPillar[resolved.id]) || {};
+      compNames(resolved).forEach((comp) => {
+        total += 1;
+        if (Number.isFinite(Number(scores[comp]))) scored += 1;
+      });
+    });
+    let status;
+    if (scored === 0) status = 'não iniciada';
+    else if (scored === total) status = 'completa';
+    else status = 'parcial';
+    return { scored, total, status };
+  }
+
   function weightedAxis(member, weights, periodKey) {
     // Itera os 3 pilares resolvendo cada um para o membro (o 'hard' depende da
     // família do cargo). pillarAverage já re-resolve o 'hard' internamente, mas
@@ -767,6 +793,7 @@
     pillarAverage,
     teamAverageByCompetency,
     memberScoresByCompetency,
+    evaluationProgress,
     performanceScore,
     potentialScore,
     nineBoxCell,

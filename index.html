@@ -94,6 +94,7 @@
     <section id="view-team" class="view">
       <div class="view-head">
         <h2>Membros do time</h2>
+        <span id="team-progress-summary" class="hint"></span>
         <button id="btn-import-members" class="btn">⬆ Importar CSV</button>
         <button id="btn-add-member" class="btn btn-primary">+ Novo colaborador</button>
       </div>
@@ -130,6 +131,10 @@
             <span class="score-label">Nine Box</span>
             <span id="score-ninebox" class="score-value">—</span>
           </div>
+        </div>
+
+        <div id="copy-prev-holder" class="copy-prev-holder hidden">
+          <!-- Botão "Copiar notas do trimestre anterior" (somente líder) via JS -->
         </div>
 
         <div class="pillars">

@@ -185,6 +185,21 @@ body {
   background: var(--surface-2); color: #cbd5e1;
 }
 
+/* Selo de progresso de avaliação (FEAT-001): estado por trimestre. */
+.prog-badge {
+  display: inline-block;
+  font-size: 11px; font-weight: 600;
+  padding: 3px 9px; border-radius: 999px;
+  margin-right: 6px;
+  border: 1px solid var(--border);
+}
+.prog-none { background: var(--surface-2); color: var(--muted); }
+.prog-partial { background: rgba(37, 99, 235, 0.15); color: #93b4fb; border-color: var(--primary); }
+.prog-done { background: rgba(5, 150, 105, 0.18); color: #6ee7b7; border-color: #059669; }
+
+/* Botão de quick-start "Copiar notas do trimestre anterior" (FEAT-001). */
+.copy-prev-holder { margin-bottom: 16px; }
+
 .empty-state {
   color: var(--muted);
   text-align: center;
@@ -233,6 +248,13 @@ body {
   gap: 10px;
   padding: 10px 0;
   border-top: 1px solid var(--border);
+}
+/* Linha de competência focável por teclado (FEAT-001): anel de foco. */
+.comp-row { outline: none; }
+.comp-row.focused {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  border-radius: 8px;
 }
 .comp-row .comp-info { min-width: 0; }
 .comp-row .comp-name { font-size: 14px; font-weight: 600; }
