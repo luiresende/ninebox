@@ -335,6 +335,30 @@
     return { scored, total, status };
   }
 
+  // Variação (delta) por competência de um pilar entre dois trimestres, para a
+  // comparação trimestre-a-trimestre na tela de Avaliação. Resolve o pilar
+  // 'hard' pela família do membro (soft/discipline fixos). Para cada competência:
+  //   current  = nota no trimestre atual  (número finito) ou null se SEM nota
+  //   previous = nota no trimestre anterior (idem)
+  //   delta    = current - previous APENAS quando ambos têm nota; caso
+  //              contrário null (NÃO-COMPARÁVEL) — nunca inventa uma queda −N
+  //              quando falta um dos lados. Isso distingue 'sem nota' de um 0
+  //              real. Retorna [{ comp, current, previous, delta }].
+  function competencyDeltas(member, pillar, periodKey, prevPeriodKey) {
+    const resolved = pillar.id === 'hard' ? hardPillarFor(member) : pillar;
+    const pillarId = resolved.id;
+    const curScores = periodScores(member, periodKey)[pillarId] || {};
+    const prevScores = periodScores(member, prevPeriodKey)[pillarId] || {};
+    return compNames(resolved).map((comp) => {
+      const curNum = Number(curScores[comp]);
+      const prevNum = Number(prevScores[comp]);
+      const current = Number.isFinite(curNum) ? curNum : null;
+      const previous = Number.isFinite(prevNum) ? prevNum : null;
+      const delta = current !== null && previous !== null ? current - previous : null;
+      return { comp, current, previous, delta };
+    });
+  }
+
   function weightedAxis(member, weights, periodKey) {
     // Itera os 3 pilares resolvendo cada um para o membro (o 'hard' depende da
     // família do cargo). pillarAverage já re-resolve o 'hard' internamente, mas
@@ -881,6 +905,7 @@
     teamAverageByCompetency,
     memberScoresByCompetency,
     evaluationProgress,
+    competencyDeltas,
     teamCompetencyRanking,
     performanceScore,
     potentialScore,

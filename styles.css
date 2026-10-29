@@ -266,6 +266,20 @@ body {
 }
 .comp-row .comp-controls { padding-top: 2px; }
 .comp-row .comp-controls { display: flex; gap: 4px; align-items: center; }
+/* Marcador de variação vs. trimestre anterior (FEAT-003): fica inline ao lado
+   do nome da competência, sem quebrar o grid existente. */
+.delta-marker {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.delta-up { color: #34d399; }
+.delta-down { color: #fca5a5; }
+.delta-flat { color: var(--muted); font-weight: 600; }
+.delta-na { color: var(--muted); opacity: 0.7; font-weight: 600; cursor: help; }
 .dot {
   width: 22px; height: 22px; border-radius: 6px;
   border: 1px solid var(--border);
@@ -309,6 +323,8 @@ body {
   font-size: 14px; color: var(--muted);
 }
 .legend-item .lg-dot { width: 12px; height: 12px; border-radius: 50%; }
+/* Nota de movimento vs. trimestre anterior na legenda do Nine Box (FEAT-003). */
+.legend-item .lg-move { font-size: 12px; color: var(--muted); opacity: 0.85; }
 
 .section-title { font-size: 17px; margin: 28px 0 14px; }
 .ninebox-guide {

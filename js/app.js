@@ -576,6 +576,14 @@
     radarWrap.appendChild(canvas);
     card.appendChild(radarWrap);
 
+    // Comparação trimestre-a-trimestre: delta de cada competência vs. o
+    // trimestre anterior. delta null => não-comparável (sem nota em algum lado);
+    // nunca exibe uma queda −N inventada quando falta nota no trimestre anterior.
+    const prevPeriodKey = shiftPeriod(selectedPeriod, -1);
+    const deltaList = Model.competencyDeltas(member, pillar, selectedPeriod, prevPeriodKey);
+    const deltaByComp = {};
+    deltaList.forEach((d) => { deltaByComp[d.comp] = d; });
+
     // Linhas de competência com botões de nota 1..5
     pillar.competencies.forEach((comp) => {
       const row = document.createElement('div');
@@ -594,6 +602,33 @@
       descEl.textContent = comp.desc;
       info.appendChild(nameEl);
       info.appendChild(descEl);
+
+      // Marcador de variação vs. trimestre anterior (▲ verde / ▼ vermelho /
+      // → neutro / — não-comparável). Fica ao lado do nome da competência.
+      const d = deltaByComp[comp.name];
+      const marker = document.createElement('span');
+      // nota 1..5 => delta inteiro; mostra sem casas decimais quando for inteiro.
+      const fmtDelta = (v) => (Number.isInteger(v) ? String(v) : v.toFixed(2));
+      if (d && d.delta !== null) {
+        if (d.delta > 0) {
+          marker.className = 'delta-marker delta-up';
+          marker.textContent = '▲ +' + fmtDelta(d.delta);
+          marker.title = 'Subiu ' + fmtDelta(d.delta) + ' vs. trimestre anterior (' + d.previous + ' → ' + d.current + ')';
+        } else if (d.delta < 0) {
+          marker.className = 'delta-marker delta-down';
+          marker.textContent = '▼ ' + fmtDelta(d.delta);
+          marker.title = 'Caiu ' + fmtDelta(Math.abs(d.delta)) + ' vs. trimestre anterior (' + d.previous + ' → ' + d.current + ')';
+        } else {
+          marker.className = 'delta-marker delta-flat';
+          marker.textContent = '→';
+          marker.title = 'Sem variação vs. trimestre anterior (' + d.current + ')';
+        }
+      } else {
+        marker.className = 'delta-marker delta-na';
+        marker.textContent = '—';
+        marker.title = 'Sem nota no trimestre anterior';
+      }
+      nameEl.appendChild(marker);
 
       const controls = document.createElement('div');
       controls.className = 'comp-controls';
@@ -884,12 +919,28 @@
     const canvas = $('#ninebox-chart');
     if (nineBoxChart) nineBoxChart.destroy();
 
-    const points = members.map((m) => ({
-      x: Model.performanceScore(m, selectedPeriod),
-      y: Model.potentialScore(m, selectedPeriod),
-      label: m.name,
-      box: Model.nineBoxLabel(m, selectedPeriod),
-    }));
+    // Trimestre anterior, para desenhar o movimento (setas) de cada membro que
+    // tenha notas REAIS no período anterior — guard via evaluationProgress para
+    // nunca criar uma origem fantasma em (0,0).
+    const prevPeriodKey = shiftPeriod(selectedPeriod, -1);
+
+    const points = members.map((m) => {
+      const hasPrev = Model.evaluationProgress(m, prevPeriodKey).scored > 0;
+      const prev = hasPrev
+        ? { x: Model.performanceScore(m, prevPeriodKey), y: Model.potentialScore(m, prevPeriodKey) }
+        : null;
+      const cur = {
+        x: Model.performanceScore(m, selectedPeriod),
+        y: Model.potentialScore(m, selectedPeriod),
+      };
+      return {
+        x: cur.x,
+        y: cur.y,
+        label: m.name,
+        box: Model.nineBoxLabel(m, selectedPeriod),
+        prev, // { x, y } do trimestre anterior ou null se não-comparável
+      };
+    });
 
     // plugin para desenhar as 9 células de fundo + rótulos
     const gridPlugin = {
@@ -939,6 +990,55 @@
       },
     };
 
+    // plugin para desenhar as SETAS de movimento (trimestre anterior -> atual).
+    // Usa afterDatasetsDraw para ficar ACIMA das células e dos pontos. Só
+    // desenha para membros com posição anterior real (p.prev != null) — sem
+    // origem fantasma em (0,0).
+    const movementPlugin = {
+      id: 'nineMovement',
+      afterDatasetsDraw(chart) {
+        const { ctx, chartArea, scales } = chart;
+        if (!chartArea) return;
+        const data = (chart.data.datasets[0] && chart.data.datasets[0].data) || [];
+        data.forEach((p) => {
+          if (!p || !p.prev) return;
+          const x0 = scales.x.getPixelForValue(p.prev.x);
+          const y0 = scales.y.getPixelForValue(p.prev.y);
+          const x1 = scales.x.getPixelForValue(p.x);
+          const y1 = scales.y.getPixelForValue(p.y);
+          const dx = x1 - x0;
+          const dy = y1 - y0;
+          const dist = Math.hypot(dx, dy);
+          if (dist < 1) return; // sem movimento perceptível: não desenha seta
+
+          ctx.save();
+          ctx.globalAlpha = 0.85;
+          ctx.strokeStyle = '#cbd5e1';
+          ctx.fillStyle = '#cbd5e1';
+          ctx.lineWidth = 1.5;
+          // marca o ponto de origem (trimestre anterior)
+          ctx.beginPath();
+          ctx.arc(x0, y0, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+          // linha do anterior -> atual
+          ctx.beginPath();
+          ctx.moveTo(x0, y0);
+          ctx.lineTo(x1, y1);
+          ctx.stroke();
+          // ponta da seta no destino (atual)
+          const ang = Math.atan2(dy, dx);
+          const head = 7;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x1 - head * Math.cos(ang - Math.PI / 6), y1 - head * Math.sin(ang - Math.PI / 6));
+          ctx.lineTo(x1 - head * Math.cos(ang + Math.PI / 6), y1 - head * Math.sin(ang + Math.PI / 6));
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        });
+      },
+    };
+
     nineBoxChart = new Chart(canvas, {
       type: 'scatter',
       data: {
@@ -963,7 +1063,12 @@
             callbacks: {
               label: (ctx) => {
                 const p = ctx.raw;
-                return `${p.label} — ${p.box} (Desemp. ${p.x.toFixed(2)} / Pot. ${p.y.toFixed(2)})`;
+                const base = `${p.label} — ${p.box} (Desemp. ${p.x.toFixed(2)} / Pot. ${p.y.toFixed(2)})`;
+                if (!p.prev) return base;
+                const dP = p.x - p.prev.x;
+                const dPot = p.y - p.prev.y;
+                const sign = (v) => (v > 0 ? '+' : '') + v.toFixed(2);
+                return [base, `Movimento vs. anterior: Desemp. ${sign(dP)} / Pot. ${sign(dPot)}`];
               },
             },
           },
@@ -985,7 +1090,7 @@
           },
         },
       },
-      plugins: [gridPlugin],
+      plugins: [gridPlugin, movementPlugin],
     });
 
     // legenda com os nomes e suas posições
@@ -994,9 +1099,16 @@
     members.forEach((m) => {
       const item = document.createElement('div');
       item.className = 'legend-item';
+      let movement = '';
+      if (Model.evaluationProgress(m, prevPeriodKey).scored > 0) {
+        const dP = Model.performanceScore(m, selectedPeriod) - Model.performanceScore(m, prevPeriodKey);
+        const dPot = Model.potentialScore(m, selectedPeriod) - Model.potentialScore(m, prevPeriodKey);
+        const sign = (v) => (v > 0 ? '+' : '') + v.toFixed(2);
+        movement = ` <span class="lg-move" title="Movimento vs. trimestre anterior">(→ Desemp. ${sign(dP)} / Pot. ${sign(dPot)})</span>`;
+      }
       item.innerHTML = `<span class="lg-dot" style="background:#60a5fa"></span> ${escapeHtml(
         m.name
-      )} — <strong style="color:#cbd5e1">${Model.nineBoxLabel(m, selectedPeriod)}</strong>`;
+      )} — <strong style="color:#cbd5e1">${Model.nineBoxLabel(m, selectedPeriod)}</strong>${movement}`;
       legend.appendChild(item);
     });
 
@@ -2271,6 +2383,58 @@
     );
 
     console.log('[FEAT-002] self-tests executados (ver asserts acima, se houver).');
+
+    // ---- Comparação trimestre-a-trimestre: competencyDeltas (FEAT-003) ----
+    // Membro com dois trimestres consecutivos; usa o pilar 'soft' (fixo) para
+    // isolar o cálculo de delta da resolução de família. No atual: Ownership
+    // sobe (3->5), Customer Obsession cai (4->2), Dive Deep fica igual (3->3) e
+    // Earn Trust é pontuado AGORA mas não no anterior (delta deve ser null, não
+    // uma falsa queda negativa).
+    const cdCur = cur;
+    const cdPrev = shiftPeriod(cur, -1);
+    const cdMember = {
+      id: 'cd1',
+      role: 'Analista de Cloud Pleno',
+      periods: {
+        [cdPrev]: {
+          scores: { soft: { 'Customer Obsession': 4, Ownership: 3, 'Dive Deep': 3 } },
+          plan: [],
+        },
+        [cdCur]: {
+          scores: { soft: { 'Customer Obsession': 2, Ownership: 5, 'Dive Deep': 3, 'Earn Trust': 4 } },
+          plan: [],
+        },
+      },
+    };
+    const cdSoft = Model.PILLARS.find((p) => p.id === 'soft');
+    const cdDeltas = Model.competencyDeltas(cdMember, cdSoft, cdCur, cdPrev);
+    const cdBy = {};
+    cdDeltas.forEach((d) => { cdBy[d.comp] = d; });
+
+    console.assert(
+      cdBy['Ownership'] && cdBy['Ownership'].delta === 2 && cdBy['Ownership'].delta > 0,
+      'FEAT-003 selftest: competencyDeltas de Ownership deve ser +2 (3 -> 5, delta > 0)'
+    );
+    console.assert(
+      cdBy['Customer Obsession'] && cdBy['Customer Obsession'].delta === -2 &&
+        cdBy['Customer Obsession'].delta < 0,
+      'FEAT-003 selftest: competencyDeltas de Customer Obsession deve ser -2 (4 -> 2, delta < 0)'
+    );
+    console.assert(
+      cdBy['Dive Deep'] && cdBy['Dive Deep'].delta === 0,
+      'FEAT-003 selftest: competencyDeltas de Dive Deep deve ser 0 (3 -> 3, inalterado)'
+    );
+    console.assert(
+      cdBy['Earn Trust'] && cdBy['Earn Trust'].delta === null &&
+        cdBy['Earn Trust'].current === 4 && cdBy['Earn Trust'].previous === null,
+      'FEAT-003 selftest: competencyDeltas sem nota no trimestre anterior deve ser null (não-comparável), NUNCA negativo'
+    );
+    console.assert(
+      typeof cdBy['Earn Trust'].delta !== 'number',
+      'FEAT-003 selftest: delta não-comparável NÃO pode ser número (guarda contra falsa queda)'
+    );
+
+    console.log('[FEAT-003 deltas] self-tests executados (ver asserts acima, se houver).');
   }
 
   // --------------------------- Bootstrap -----------------------------------
