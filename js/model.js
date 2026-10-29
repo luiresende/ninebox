@@ -776,6 +776,93 @@
     });
   }
 
+  // Rótulos legíveis (pt-BR) por família de HardSkill, usados para etiquetar as
+  // competências 'hard' no ranking do time (Painel).
+  const FAMILY_LABELS = {
+    devops: 'DevOps',
+    cloud: 'Cloud',
+    processos: 'Processos',
+    techlead: 'Tech Lead',
+    coord_msp: 'Coord. MSP',
+    coord_proj: 'Coord. Projetos',
+    generico: 'Genérico',
+  };
+
+  // Ranking de competências do time em um trimestre (para o Painel do líder).
+  // Calcula a MÉDIA por competência contando APENAS valores com nota de fato
+  // (número finito); `n` registra quantos membros pontuaram a competência.
+  //   - soft / discipline: média de cada competência entre TODOS os membros que
+  //     a pontuaram (eixos fixos de PILLARS).
+  //   - hard: agrupa os membros por família de cargo (cargoFamily) e calcula a
+  //     média DENTRO de cada família, pois famílias têm conjuntos de HardSkill
+  //     diferentes — nunca mistura competências de famílias distintas. Cada
+  //     entrada 'hard' recebe `family` (chave) e `familyLabel` (rótulo pt-BR).
+  // Retorna { strengths, weaknesses } com as top-3 maiores e top-3 menores
+  // médias (lista achatada de todas as competências/famílias). Competências sem
+  // nenhum membro pontuado (n === 0) são ignoradas.
+  function teamCompetencyRanking(members, periodKey) {
+    const list = members || [];
+    const entries = [];
+
+    // soft + discipline: média entre todos os membros que pontuaram
+    ['soft', 'discipline'].forEach((pillarId) => {
+      const pillar = PILLARS.find((p) => p.id === pillarId);
+      compNames(pillar).forEach((comp) => {
+        let sum = 0;
+        let n = 0;
+        list.forEach((m) => {
+          const v = Number(periodScores(m, periodKey)[pillarId]?.[comp]);
+          if (Number.isFinite(v)) {
+            sum += v;
+            n += 1;
+          }
+        });
+        if (n > 0) {
+          entries.push({ comp, pillarId, family: null, familyLabel: null, avg: sum / n, n });
+        }
+      });
+    });
+
+    // hard: agrupa por família e calcula a média dentro de cada família
+    const byFamily = {};
+    list.forEach((m) => {
+      const fam = cargoFamily(m && m.role);
+      (byFamily[fam] || (byFamily[fam] = [])).push(m);
+    });
+    Object.keys(byFamily).forEach((fam) => {
+      const famMembers = byFamily[fam];
+      const comps = compNames(hardPillarFor(famMembers[0]));
+      comps.forEach((comp) => {
+        let sum = 0;
+        let n = 0;
+        famMembers.forEach((m) => {
+          const v = Number(periodScores(m, periodKey).hard?.[comp]);
+          if (Number.isFinite(v)) {
+            sum += v;
+            n += 1;
+          }
+        });
+        if (n > 0) {
+          entries.push({
+            comp,
+            pillarId: 'hard',
+            family: fam,
+            familyLabel: FAMILY_LABELS[fam] || fam,
+            avg: sum / n,
+            n,
+          });
+        }
+      });
+    });
+
+    const strongFirst = entries.slice().sort((a, b) => b.avg - a.avg);
+    const weakFirst = entries.slice().sort((a, b) => a.avg - b.avg);
+    return {
+      strengths: strongFirst.slice(0, 3),
+      weaknesses: weakFirst.slice(0, 3),
+    };
+  }
+
   window.Model = {
     SCALE_MIN,
     SCALE_MAX,
@@ -794,6 +881,7 @@
     teamAverageByCompetency,
     memberScoresByCompetency,
     evaluationProgress,
+    teamCompetencyRanking,
     performanceScore,
     potentialScore,
     nineBoxCell,

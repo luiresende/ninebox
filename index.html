@@ -60,6 +60,9 @@
         <button class="nav-item active" data-view="ninebox">
           <span class="nav-icon">🎯</span> Nine Box
         </button>
+        <button class="nav-item" data-view="dashboard" id="nav-dashboard">
+          <span class="nav-icon">📋</span> Painel
+        </button>
         <button class="nav-item" data-view="team">
           <span class="nav-icon">👥</span> Time
         </button>
@@ -158,6 +161,27 @@
 
       <h3 class="section-title">O que significa cada quadrante</h3>
       <div id="ninebox-guide" class="ninebox-guide"></div>
+    </section>
+
+    <!-- ====================== VIEW: PAINEL ===================== -->
+    <section id="view-dashboard" class="view">
+      <div class="view-head">
+        <h2>Painel</h2>
+        <span class="hint">Visão consolidada do time no trimestre</span>
+        <div class="quarter-bar" id="q-sel-dashboard"></div>
+      </div>
+
+      <h3 class="section-title">Distribuição Nine Box</h3>
+      <div id="dash-ninebox" class="dash-ninebox"></div>
+
+      <h3 class="section-title">Médias por pilar</h3>
+      <div id="dash-pillars" class="dashboard-grid"></div>
+
+      <h3 class="section-title">Competências em destaque</h3>
+      <div id="dash-ranking" class="dashboard-grid"></div>
+
+      <h3 class="section-title">Avaliações pendentes</h3>
+      <div id="dash-pending" class="dash-pending"></div>
     </section>
 
     <!-- ===================== VIEW: USUÁRIOS ==================== -->

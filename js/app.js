@@ -62,6 +62,7 @@
     else if (v === 'plan') renderPlan();
     else if (v === 'evolution') renderEvolution();
     else if (v === 'team') renderTeam();
+    else if (v === 'dashboard') renderDashboard();
   }
 
   // Renderiza a barra de navegação de trimestre (anterior / rótulo / próximo)
@@ -109,11 +110,13 @@
 
   // --------------------------- Navegação -----------------------------------
   function switchView(view) {
-    // colaborador não acessa a aba de usuários
+    // colaborador não acessa a aba de usuários nem o painel do líder
     if (view === 'users' && !canEdit()) view = 'team';
+    if (view === 'dashboard' && !canEdit()) view = 'team';
     $$('.nav-item').forEach((t) => t.classList.toggle('active', t.dataset.view === view));
     $$('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + view));
     if (view === 'ninebox') renderNineBox();
+    if (view === 'dashboard') renderDashboard();
     if (view === 'evaluate') renderEvaluate();
     if (view === 'users') renderUsers();
     if (view === 'plan') renderPlan();
@@ -726,6 +729,153 @@
     const g = parseInt(h.substring(2, 4), 16);
     const b = parseInt(h.substring(4, 6), 16);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  // --------------------------- View: Painel --------------------------------
+  // Painel consolidado do time (somente líder), reativo ao trimestre global.
+  // Quatro blocos para selectedPeriod: distribuição Nine Box 3x3, médias por
+  // pilar, top-3 fortes / top-3 fracas e avaliações pendentes. Somente leitura.
+  function renderDashboard() {
+    if (!canEdit()) return; // somente líder
+    renderQuarterBar('q-sel-dashboard');
+
+    // Cores/rótulos EXATOS da matriz Nine Box (ver renderNineBox / guide),
+    // indexados [potencial][desempenho], potencial 0=baixo .. 2=alto.
+    const colors = [
+      ['#7f1d1d', '#78350f', '#1e3a8a'],
+      ['#78350f', '#1e3a8a', '#065f46'],
+      ['#1e3a8a', '#065f46', '#064e3b'],
+    ];
+    const labels = [
+      ['Risco', 'Eficaz', 'Especialista'],
+      ['Dilema', 'Mantenedor', 'Forte desemp.'],
+      ['Enigma', 'Crescimento', 'Estrela'],
+    ];
+
+    // (a) Distribuição Nine Box 3x3 — conta membros por quadrante (por rótulo).
+    const nbWrap = $('#dash-ninebox');
+    if (nbWrap) {
+      nbWrap.innerHTML = '';
+      const counts = {};
+      members.forEach((m) => {
+        const label = Model.nineBoxLabel(m, selectedPeriod);
+        counts[label] = (counts[label] || 0) + 1;
+      });
+      // potencial ALTO (linha 2) em cima; desempenho da esquerda p/ a direita.
+      for (let p = 2; p >= 0; p--) {
+        for (let d = 0; d < 3; d++) {
+          const name = labels[p][d];
+          const n = counts[name] || 0;
+          const cell = document.createElement('div');
+          cell.className = 'dash-nb-cell';
+          cell.style.borderTopColor = colors[p][d];
+          cell.innerHTML =
+            '<span class="dash-nb-count">' + n + '</span>' +
+            '<span class="dash-nb-name">' + escapeHtml(name) + '</span>';
+          nbWrap.appendChild(cell);
+        }
+      }
+    }
+
+    // (b) Médias por pilar — média de pillarAverage entre os membros. Para o
+    // 'hard', calcula a média POR MEMBRO (pilar resolvido por família) e então
+    // a média dessas médias; nunca mistura conjuntos de competências distintos.
+    const pillarsWrap = $('#dash-pillars');
+    if (pillarsWrap) {
+      pillarsWrap.innerHTML = '';
+      PILLARS.forEach((pillar) => {
+        let avg = null;
+        if (members.length > 0) {
+          const sum = members.reduce((acc, m) => {
+            const resolved = pillar.id === 'hard' ? Model.resolvePillar(m, 'hard') : pillar;
+            return acc + Model.pillarAverage(m, resolved, selectedPeriod);
+          }, 0);
+          avg = sum / members.length;
+        }
+        const card = document.createElement('div');
+        card.className = 'stat-card';
+        card.innerHTML =
+          '<span class="stat-label">' + escapeHtml(pillar.name) + '</span>' +
+          '<span class="stat-value">' + fmt(avg) + '</span>' +
+          '<span class="stat-sub">' + escapeHtml(pillar.subtitle) + '</span>';
+        pillarsWrap.appendChild(card);
+      });
+    }
+
+    // (c) Top-3 fortes / top-3 fracas (Model.teamCompetencyRanking). Entradas
+    // 'hard' são etiquetadas com o rótulo da família de cargo.
+    const rankWrap = $('#dash-ranking');
+    if (rankWrap) {
+      rankWrap.innerHTML = '';
+      const ranking = Model.teamCompetencyRanking(members, selectedPeriod);
+      const compLabel = (e) =>
+        escapeHtml(e.comp) + (e.familyLabel ? ' <span class="rank-fam">(' + escapeHtml(e.familyLabel) + ')</span>' : '');
+      const buildList = (title, cls, items) => {
+        const card = document.createElement('div');
+        card.className = 'rank-card ' + cls;
+        let html = '<span class="rank-title">' + title + '</span>';
+        if (!items.length) {
+          html += '<p class="rank-empty">Sem avaliações neste trimestre.</p>';
+        } else {
+          html += '<ol class="rank-list">';
+          items.forEach((e) => {
+            html +=
+              '<li><span class="rank-comp">' + compLabel(e) + '</span>' +
+              '<span class="rank-avg">' + fmt(e.avg) + '</span></li>';
+          });
+          html += '</ol>';
+        }
+        card.innerHTML = html;
+        return card;
+      };
+      rankWrap.appendChild(buildList('Mais fortes', 'rank-strong', ranking.strengths));
+      rankWrap.appendChild(buildList('Mais fracas', 'rank-weak', ranking.weaknesses));
+    }
+
+    // (d) Avaliações pendentes — 'X de N avaliações concluídas' + lista de quem
+    // está 'não iniciada' / 'parcial'. Clicar em um membro abre a Avaliação.
+    const pendWrap = $('#dash-pending');
+    if (pendWrap) {
+      pendWrap.innerHTML = '';
+      const total = members.length;
+      let done = 0;
+      const pending = [];
+      members.forEach((m) => {
+        const prog = Model.evaluationProgress(m, selectedPeriod);
+        if (prog.status === 'completa') done += 1;
+        else pending.push({ m, prog });
+      });
+      const summary = document.createElement('p');
+      summary.className = 'dash-pending-summary';
+      summary.textContent = done + ' de ' + total + ' avaliações concluídas neste trimestre';
+      pendWrap.appendChild(summary);
+
+      if (pending.length === 0) {
+        const ok = document.createElement('p');
+        ok.className = 'hint';
+        ok.textContent = total === 0
+          ? 'Nenhum colaborador cadastrado.'
+          : 'Todas as avaliações do trimestre estão completas.';
+        pendWrap.appendChild(ok);
+      } else {
+        const ul = document.createElement('ul');
+        ul.className = 'dash-pending-list';
+        pending.forEach(({ m, prog }) => {
+          const badge = progressBadge(prog);
+          const li = document.createElement('li');
+          li.className = 'dash-pending-item';
+          li.innerHTML =
+            '<span class="dash-pending-name">' + escapeHtml(m.name) + '</span>' +
+            '<span class="prog-badge ' + badge.cls + '">' + badge.text + '</span>';
+          li.addEventListener('click', () => {
+            selectedId = m.id;
+            switchView('evaluate');
+          });
+          ul.appendChild(li);
+        });
+        pendWrap.appendChild(ul);
+      }
+    }
   }
 
   // --------------------------- Nine Box ------------------------------------
@@ -1741,6 +1891,8 @@
     $('#member-select').classList.toggle('hidden', !leader);
     // aba de gestão de usuários/papéis só para líderes
     $('#nav-users').classList.toggle('hidden', !leader);
+    // painel consolidado do time só para líderes
+    $('#nav-dashboard').classList.toggle('hidden', !leader);
     // importar CSV só para líderes
     $('#btn-import-members').classList.toggle('hidden', !leader);
 
@@ -2064,6 +2216,61 @@
     );
 
     console.log('[FEAT-001] self-tests executados (ver asserts acima, se houver).');
+
+    // ---- Ranking de competências do time (FEAT-002) ----
+    // Time sintético: 2 devops (notas hard em 'CI/CD') + 1 cloud (nota hard em
+    // 'Cloud / AWS'), e soft 'Ownership' pontuado por um subconjunto.
+    const r1 = {
+      id: 'r1',
+      role: 'Engenheiro DevOps Pleno',
+      periods: { [cur]: { scores: { hard: { 'CI/CD': 4 }, soft: { Ownership: 5 } }, plan: [] } },
+    };
+    const r2 = {
+      id: 'r2',
+      role: 'Engenheiro DevOps Senior',
+      periods: { [cur]: { scores: { hard: { 'CI/CD': 2 } }, plan: [] } },
+    };
+    const r3 = {
+      id: 'r3',
+      role: 'Analista de Cloud Pleno',
+      periods: { [cur]: { scores: { hard: { 'Cloud / AWS': 1 }, soft: { Ownership: 3 } }, plan: [] } },
+    };
+    const rank = Model.teamCompetencyRanking([r1, r2, r3], cur);
+    const all = rank.strengths.concat(rank.weaknesses);
+
+    // (a) competência pontuada só por alguns usa apenas os membros pontuados:
+    // Ownership pontuado por r1=5 e r3=3 (r2 não) => média 4, n === 2.
+    const own = all.find((e) => e.comp === 'Ownership');
+    console.assert(
+      own && own.avg === (5 + 3) / 2 && own.n === 2,
+      'FEAT-002 selftest: média de Ownership deve usar só quem pontuou (r1=5, r3=3 => 4; n=2)'
+    );
+
+    // (b) hard agrupado por família: CI/CD é de devops (r1=4, r2=2 => 3) e não
+    // mistura com o cloud; a entrada CI/CD deve ter family 'devops' e n === 2.
+    const cicd = all.find((e) => e.comp === 'CI/CD' && e.pillarId === 'hard');
+    console.assert(
+      cicd && cicd.family === 'devops' && cicd.avg === (4 + 2) / 2 && cicd.n === 2,
+      "FEAT-002 selftest: CI/CD (hard) deve agrupar só devops (r1=4, r2=2 => 3), family 'devops', n=2"
+    );
+    // 'Cloud / AWS' (cloud) existe como entrada separada com n === 1 e avg 1.
+    const cloudAws = all.find((e) => e.comp === 'Cloud / AWS' && e.pillarId === 'hard');
+    console.assert(
+      cloudAws && cloudAws.family === 'cloud' && cloudAws.avg === 1 && cloudAws.n === 1,
+      "FEAT-002 selftest: 'Cloud / AWS' (hard) deve ser entrada separada da família 'cloud' (avg 1, n 1)"
+    );
+
+    // (c) ordenação: a mais forte é Ownership (4) e a mais fraca é Cloud/AWS (1).
+    console.assert(
+      rank.strengths[0] && rank.strengths[0].comp === 'Ownership',
+      'FEAT-002 selftest: a competência mais forte do time deve ser Ownership (média 4)'
+    );
+    console.assert(
+      rank.weaknesses[0] && rank.weaknesses[0].comp === 'Cloud / AWS',
+      "FEAT-002 selftest: a competência mais fraca do time deve ser 'Cloud / AWS' (média 1)"
+    );
+
+    console.log('[FEAT-002] self-tests executados (ver asserts acima, se houver).');
   }
 
   // --------------------------- Bootstrap -----------------------------------
