@@ -252,19 +252,30 @@
     return (member && member.scores) || {};
   }
 
-  // Média das notas de um pilar para um colaborador. Competências sem nota
-  // contam como 0 para não inflar o resultado de quem não foi avaliado.
+  // Média das notas de um pilar para um colaborador. REGRA (confirmada):
+  // considera APENAS as competências COM nota de fato (número finito). Uma
+  // competência sem nota NÃO entra nem no numerador nem no denominador — assim
+  // uma avaliação parcial não é arrastada para baixo por competências vazias.
+  // Um pilar SEM nenhuma competência pontuada não tem valor: retorna `null`
+  // (NÃO 0). Os chamadores devem tratar null (ver fmt em app.js) e nunca deixar
+  // null virar 0 silenciosamente, o que reintroduziria a distorção.
   // Para o pilar 'hard', as competências são resolvidas a partir da família do
   // MEMBRO (hardPillarFor), não do objeto `pillar` recebido; soft/discipline
   // seguem inalterados.
   function pillarAverage(member, pillar, periodKey) {
     const resolved = pillar.id === 'hard' ? hardPillarFor(member) : pillar;
     const scores = periodScores(member, periodKey)[resolved.id] || {};
-    const total = compNames(resolved).reduce((sum, comp) => {
+    let sum = 0;
+    let scored = 0;
+    compNames(resolved).forEach((comp) => {
       const v = Number(scores[comp]);
-      return sum + (Number.isFinite(v) ? v : 0);
-    }, 0);
-    return total / resolved.competencies.length;
+      if (Number.isFinite(v)) {
+        sum += v;
+        scored += 1;
+      }
+    });
+    if (scored === 0) return null; // pilar sem nota => sem valor (não 0)
+    return sum / scored;
   }
 
   // Média do time (todos os membros exceto o informado) por competência,
@@ -359,16 +370,33 @@
     });
   }
 
+  // Soma ponderada das médias dos pilares para formar um eixo do Nine Box.
+  // TRATAMENTO DE PILAR SEM NOTA (confirmado): pillarAverage pode devolver null
+  // (pilar sem nenhuma competência pontuada). Um pilar null NÃO contribui para
+  // o eixo — ele é EXCLUÍDO e os pesos são RENORMALIZADOS sobre os pilares que
+  // têm valor. Assim um membro com só HardSkill pontuado (Disciplina/Soft
+  // vazios) reflete o HardSkill real, em vez de ser arrastado a ~0 por um 0
+  // fantasma dos pilares vazios. Se NENHUM pilar com peso tiver valor, o eixo é
+  // indefinido e retornamos 0 de forma consistente (o membro, nesse caso, não é
+  // plotado no Nine Box — ver renderNineBox/evaluationProgress — então esse 0
+  // nunca vira um ponto fantasma).
+  // Itera os 3 pilares resolvendo cada um para o membro (o 'hard' depende da
+  // família do cargo). pillarAverage já re-resolve o 'hard' internamente, mas
+  // resolver aqui mantém o contrato explícito e consistente.
   function weightedAxis(member, weights, periodKey) {
-    // Itera os 3 pilares resolvendo cada um para o membro (o 'hard' depende da
-    // família do cargo). pillarAverage já re-resolve o 'hard' internamente, mas
-    // resolver aqui mantém o contrato explícito e consistente.
-    return PILLARS.reduce((acc, basePillar) => {
+    let acc = 0;
+    let wSum = 0;
+    PILLARS.forEach((basePillar) => {
       const w = weights[basePillar.id] || 0;
-      if (!w) return acc;
+      if (!w) return;
       const pillar = resolvePillar(member, basePillar.id);
-      return acc + w * pillarAverage(member, pillar, periodKey);
-    }, 0);
+      const avg = pillarAverage(member, pillar, periodKey);
+      if (avg === null) return; // pilar sem nota não contribui (renormaliza)
+      acc += w * avg;
+      wSum += w;
+    });
+    if (wSum === 0) return 0; // nenhum pilar com valor => eixo indefinido (0)
+    return acc / wSum; // renormaliza sobre os pesos dos pilares com valor
   }
 
   function performanceScore(member, periodKey) {
@@ -380,7 +408,13 @@
   }
 
   // Converte uma nota (1..5) em faixa baixa/média/alta (0,1,2).
+  // Guarda defensiva: um valor null/não-finito NÃO deve virar banda 0 (baixo)
+  // silenciosamente — isso recriaria a distorção (membro sem nota caindo em
+  // 'Risco'). Retorna null quando não há valor; os chamadores de Nine Box já
+  // excluem membros sem nota (ver hasPlottableScores/evaluationProgress), então
+  // band só deve receber números reais em uso normal.
   function band(value) {
+    if (!Number.isFinite(value)) return null;
     // divide a escala em 3 faixas iguais
     const span = (SCALE_MAX - SCALE_MIN) / 3;
     if (value <= SCALE_MIN + span) return 0; // baixo
@@ -412,14 +446,30 @@
     ],
   ];
 
+  // Um membro só é posicionável no Nine Box se tiver AO MENOS uma competência
+  // pontuada no trimestre. Sem nenhuma nota, os eixos são indefinidos e o membro
+  // é 'não avaliado' — não deve ser plotado nem bucketizado num quadrante
+  // (caso contrário viraria um ponto fantasma em 'Risco'/(0,0)).
+  function hasPlottableScores(member, periodKey) {
+    return evaluationProgress(member, periodKey).scored > 0;
+  }
+
+  // Célula do Nine Box do membro. Quando o membro não tem nota (não plotável),
+  // não há quadrante: retorna null. Guarda também contra band null por
+  // segurança (não deve ocorrer quando hasPlottableScores é verdadeiro).
   function nineBoxCell(member, periodKey) {
+    if (!hasPlottableScores(member, periodKey)) return null;
     const p = band(potentialScore(member, periodKey)); // linha (0=baixo .. 2=alto)
     const d = band(performanceScore(member, periodKey)); // coluna
+    if (p === null || d === null) return null;
     return NINE_BOX[p][d];
   }
 
+  // Rótulo do quadrante. Para membro sem nota, devolve 'não avaliado' em vez de
+  // mapear para 'Risco' — o chamador decide como exibir essa condição.
   function nineBoxLabel(member, periodKey) {
-    return nineBoxCell(member, periodKey).name;
+    const cell = nineBoxCell(member, periodKey);
+    return cell ? cell.name : 'não avaliado';
   }
 
   // ==========================================================================
@@ -905,6 +955,7 @@
     teamAverageByCompetency,
     memberScoresByCompetency,
     evaluationProgress,
+    hasPlottableScores,
     competencyDeltas,
     teamCompetencyRanking,
     performanceScore,

@@ -496,9 +496,12 @@
     // está vazio e o anterior tem notas (ver renderCopyPrevButton).
     renderCopyPrevButton(member);
 
-    // Scoreboard (do trimestre selecionado)
-    $('#score-performance').textContent = fmt(Model.performanceScore(member, selectedPeriod));
-    $('#score-potential').textContent = fmt(Model.potentialScore(member, selectedPeriod));
+    // Scoreboard (do trimestre selecionado). Sem nenhuma competência pontuada,
+    // os eixos são indefinidos: exibe '—' em vez de 0,00 (que reintroduziria a
+    // leitura falsa de "Risco"). nineBoxLabel já devolve 'não avaliado'.
+    const hasScores = Model.hasPlottableScores(member, selectedPeriod);
+    $('#score-performance').textContent = hasScores ? fmt(Model.performanceScore(member, selectedPeriod)) : '—';
+    $('#score-potential').textContent = hasScores ? fmt(Model.potentialScore(member, selectedPeriod)) : '—';
     $('#score-ninebox').textContent = Model.nineBoxLabel(member, selectedPeriod);
 
     // Pilares. O pilar HardSkill é resolvido pela família do cargo do membro
@@ -819,14 +822,22 @@
     if (pillarsWrap) {
       pillarsWrap.innerHTML = '';
       PILLARS.forEach((pillar) => {
+        // Média do pilar no time: considera APENAS membros que têm valor neste
+        // pilar (pillarAverage !== null). Um membro sem nota no pilar NÃO conta
+        // como 0 — isso arrastaria a média do time para baixo. Sem nenhum
+        // membro pontuado => avg null (exibido como '—' via fmt).
         let avg = null;
-        if (members.length > 0) {
-          const sum = members.reduce((acc, m) => {
-            const resolved = pillar.id === 'hard' ? Model.resolvePillar(m, 'hard') : pillar;
-            return acc + Model.pillarAverage(m, resolved, selectedPeriod);
-          }, 0);
-          avg = sum / members.length;
-        }
+        let sum = 0;
+        let n = 0;
+        members.forEach((m) => {
+          const resolved = pillar.id === 'hard' ? Model.resolvePillar(m, 'hard') : pillar;
+          const a = Model.pillarAverage(m, resolved, selectedPeriod);
+          if (a !== null) {
+            sum += a;
+            n += 1;
+          }
+        });
+        if (n > 0) avg = sum / n;
         const card = document.createElement('div');
         card.className = 'stat-card';
         card.innerHTML =
@@ -924,8 +935,18 @@
     // nunca criar uma origem fantasma em (0,0).
     const prevPeriodKey = shiftPeriod(selectedPeriod, -1);
 
-    const points = members.map((m) => {
-      const hasPrev = Model.evaluationProgress(m, prevPeriodKey).scored > 0;
+    // Separa os membros plotáveis (>= 1 competência pontuada neste trimestre)
+    // dos NÃO avaliados. Os não avaliados NÃO viram ponto (sem fantasma em
+    // (0,0)); aparecem só numa nota/legenda à parte. Entre os plotáveis,
+    // distinguimos 'parcial' (nem toda competência pontuada) de 'completa'.
+    const plottable = members.filter((m) => Model.hasPlottableScores(m, selectedPeriod));
+    const notEvaluated = members.filter((m) => !Model.hasPlottableScores(m, selectedPeriod));
+
+    const points = plottable.map((m) => {
+      const isPartial = Model.evaluationProgress(m, selectedPeriod).status === 'parcial';
+      // Movimento só quando há notas REAIS no período anterior — guard via
+      // hasPlottableScores para nunca criar uma origem fantasma em (0,0).
+      const hasPrev = Model.hasPlottableScores(m, prevPeriodKey);
       const prev = hasPrev
         ? { x: Model.performanceScore(m, prevPeriodKey), y: Model.potentialScore(m, prevPeriodKey) }
         : null;
@@ -938,6 +959,7 @@
         y: cur.y,
         label: m.name,
         box: Model.nineBoxLabel(m, selectedPeriod),
+        partial: isPartial, // avaliação incompleta: ponto marcado como parcial
         prev, // { x, y } do trimestre anterior ou null se não-comparável
       };
     });
@@ -1046,9 +1068,27 @@
           {
             label: 'Colaboradores',
             data: points,
-            backgroundColor: '#60a5fa',
-            borderColor: '#1e3a8a',
-            borderWidth: 2,
+            // Completa: ponto sólido azul. Parcial: anel vazado (interior do
+            // fundo escuro) com borda azul clara, para distinguir à primeira
+            // vista uma avaliação incompleta. Estilo por ponto via callbacks.
+            backgroundColor: (ctx) => {
+              const p = ctx.raw;
+              return p && p.partial ? 'rgba(96,165,250,0.12)' : '#60a5fa';
+            },
+            borderColor: (ctx) => {
+              const p = ctx.raw;
+              return p && p.partial ? '#93b4fb' : '#1e3a8a';
+            },
+            borderWidth: (ctx) => {
+              const p = ctx.raw;
+              return p && p.partial ? 2.5 : 2;
+            },
+            pointStyle: (ctx) => {
+              const p = ctx.raw;
+              // círculo em ambos; o preenchimento translúcido + borda marcada
+              // já dá o efeito de "anel vazado" para o parcial.
+              return 'circle';
+            },
             pointRadius: 7,
             pointHoverRadius: 9,
           },
@@ -1063,7 +1103,8 @@
             callbacks: {
               label: (ctx) => {
                 const p = ctx.raw;
-                const base = `${p.label} — ${p.box} (Desemp. ${p.x.toFixed(2)} / Pot. ${p.y.toFixed(2)})`;
+                const tag = p.partial ? ' (parcial)' : '';
+                const base = `${p.label}${tag} — ${p.box} (Desemp. ${p.x.toFixed(2)} / Pot. ${p.y.toFixed(2)})`;
                 if (!p.prev) return base;
                 const dP = p.x - p.prev.x;
                 const dPot = p.y - p.prev.y;
@@ -1093,24 +1134,42 @@
       plugins: [gridPlugin, movementPlugin],
     });
 
-    // legenda com os nomes e suas posições
+    // legenda com os nomes e suas posições (apenas os plotados). Partial recebe
+    // marcador '(parcial)' e um ponto vazado para bater com o scatter.
     const legend = $('#ninebox-legend');
     legend.innerHTML = '';
-    members.forEach((m) => {
+    plottable.forEach((m) => {
+      const isPartial = Model.evaluationProgress(m, selectedPeriod).status === 'parcial';
       const item = document.createElement('div');
       item.className = 'legend-item';
       let movement = '';
-      if (Model.evaluationProgress(m, prevPeriodKey).scored > 0) {
+      if (Model.hasPlottableScores(m, prevPeriodKey)) {
         const dP = Model.performanceScore(m, selectedPeriod) - Model.performanceScore(m, prevPeriodKey);
         const dPot = Model.potentialScore(m, selectedPeriod) - Model.potentialScore(m, prevPeriodKey);
         const sign = (v) => (v > 0 ? '+' : '') + v.toFixed(2);
         movement = ` <span class="lg-move" title="Movimento vs. trimestre anterior">(→ Desemp. ${sign(dP)} / Pot. ${sign(dPot)})</span>`;
       }
-      item.innerHTML = `<span class="lg-dot" style="background:#60a5fa"></span> ${escapeHtml(
+      const dotCls = isPartial ? 'lg-dot lg-dot-partial' : 'lg-dot';
+      const dotStyle = isPartial ? '' : 'background:#60a5fa';
+      const partialTag = isPartial
+        ? ' <span class="lg-partial" title="Avaliação incompleta — plotado com as competências já pontuadas">(parcial)</span>'
+        : '';
+      item.innerHTML = `<span class="${dotCls}" style="${dotStyle}"></span> ${escapeHtml(
         m.name
-      )} — <strong style="color:#cbd5e1">${Model.nineBoxLabel(m, selectedPeriod)}</strong>${movement}`;
+      )}${partialTag} — <strong style="color:#cbd5e1">${escapeHtml(Model.nineBoxLabel(m, selectedPeriod))}</strong>${movement}`;
       legend.appendChild(item);
     });
+
+    // Membros NÃO avaliados neste trimestre: não entram no scatter, mas o líder
+    // precisa saber que existem. Lista-os numa nota à parte como 'não avaliado'.
+    if (notEvaluated.length) {
+      const note = document.createElement('div');
+      note.className = 'ninebox-unscored';
+      note.innerHTML =
+        '<span class="unscored-title">Não avaliados neste trimestre (não plotados):</span> ' +
+        notEvaluated.map((m) => escapeHtml(m.name)).join(', ');
+      legend.appendChild(note);
+    }
 
     renderNineBoxGuide();
   }
@@ -1908,7 +1967,16 @@
     );
   }
 
+  // Formata uma média/score para os relatórios: null/não-finito vira '—'
+  // (nunca chama .toFixed em null, que lançaria).
+  function fmtReport(n) {
+    return Number.isFinite(n) ? n.toFixed(2) : '—';
+  }
+
   function reportMemberIndividual(member, periodKey) {
+    // Membro sem nenhuma competência pontuada: Desempenho/Potencial são
+    // indefinidos — exibidos como '—' (nunca 0 arrastado).
+    const scored = Model.hasPlottableScores(member, periodKey);
     const pillarsRows = Model.PILLARS.map((basePillar) => {
       // HardSkill resolvido pela família do cargo; soft/discipline inalterados.
       const p = Model.resolvePillar(member, basePillar.id);
@@ -1919,7 +1987,7 @@
           return `<tr><td>${esc(comp)}</td><td>${v == null ? '—' : v}</td></tr>`;
         })
         .join('');
-      return `<h2>${esc(p.name)} — ${esc(p.subtitle)} (média ${Model.pillarAverage(member, p, periodKey).toFixed(2)})</h2>
+      return `<h2>${esc(p.name)} — ${esc(p.subtitle)} (média ${fmtReport(Model.pillarAverage(member, p, periodKey))})</h2>
         <table><thead><tr><th>Competência</th><th>Nota (1-5)</th></tr></thead><tbody>${comps}</tbody></table>`;
     }).join('');
 
@@ -1944,8 +2012,8 @@
       `<h1>Relatório de Avaliação</h1>` +
       `<div class="muted">${esc(member.name)}${member.role ? ' — ' + esc(member.role) : ''} · ${esc(member.email || member.id)} · Trimestre ${esc(periodKey)}</div>` +
       `<div class="scorecards">
-        <div class="sc"><div class="l">Desempenho</div><div class="v">${Model.performanceScore(member, periodKey).toFixed(2)}</div></div>
-        <div class="sc"><div class="l">Potencial</div><div class="v">${Model.potentialScore(member, periodKey).toFixed(2)}</div></div>
+        <div class="sc"><div class="l">Desempenho</div><div class="v">${scored ? fmtReport(Model.performanceScore(member, periodKey)) : '—'}</div></div>
+        <div class="sc"><div class="l">Potencial</div><div class="v">${scored ? fmtReport(Model.potentialScore(member, periodKey)) : '—'}</div></div>
         <div class="sc"><div class="l">Nine Box</div><div class="v">${esc(Model.nineBoxLabel(member, periodKey))}</div></div>
       </div>` +
       pillarsRows +
@@ -1957,11 +2025,14 @@
   function reportTeam(periodKey) {
     const rows = members
       .map((m) => {
+        // Sem nota no trimestre: eixos indefinidos => '—' e quadrante
+        // 'não avaliado' (nineBoxLabel já devolve esse rótulo).
+        const scored = Model.hasPlottableScores(m, periodKey);
         return `<tr>
           <td>${esc(m.name)}</td>
           <td>${esc(m.role || '—')}</td>
-          <td>${Model.performanceScore(m, periodKey).toFixed(2)}</td>
-          <td>${Model.potentialScore(m, periodKey).toFixed(2)}</td>
+          <td>${scored ? fmtReport(Model.performanceScore(m, periodKey)) : '—'}</td>
+          <td>${scored ? fmtReport(Model.potentialScore(m, periodKey)) : '—'}</td>
           <td>${esc(Model.nineBoxLabel(m, periodKey))}</td>
         </tr>`;
       })
@@ -2165,11 +2236,12 @@
     );
 
     // (c) pillarAverage no trimestre selecionado bate com o valor esperado:
-    // (4 + 2) somados sobre as 6 competências de HardSkill => 6/6 = 1.
+    // apenas DUAS competências de HardSkill têm nota (4 e 2); a média divide
+    // pela CONTAGEM de pontuadas => (4 + 2)/2 = 3 (NÃO /6, que arrastaria p/ 1).
     const avg = Model.pillarAverage(migrated, Model.PILLARS[0], cur);
     console.assert(
-      avg === (4 + 2) / 6,
-      'FEAT-003 selftest: pillarAverage(HardSkill, trimestreAtual) deve ser (4+2)/6'
+      avg === (4 + 2) / 2,
+      'FEAT-003 selftest: pillarAverage(HardSkill) deve dividir pelas pontuadas => (4+2)/2'
     );
 
     // ---- HardSkill por família de cargo (FEAT-003) ----
@@ -2435,6 +2507,136 @@
     );
 
     console.log('[FEAT-003 deltas] self-tests executados (ver asserts acima, se houver).');
+
+    // ---- Nine Box: média por competências pontuadas + parcial/não avaliado ----
+    // Regra confirmada: pillarAverage divide pelo nº de competências COM nota;
+    // pilar sem nota => null; eixos renormalizam sobre pilares com valor; membro
+    // sem nota não é plotado; membro parcial é plotado e marcado.
+    const nbRole = 'Engenheiro DevOps Pleno';
+    const nbHard = Model.compNames(Model.hardPillarFor({ role: nbRole }));
+    const nbSoft = Model.compNames(Model.PILLARS.find((p) => p.id === 'soft'));
+    const nbDisc = Model.compNames(Model.PILLARS.find((p) => p.id === 'discipline'));
+    const hardPillarObj = Model.PILLARS.find((p) => p.id === 'hard');
+    const softPillarObj = Model.PILLARS.find((p) => p.id === 'soft');
+    const discPillarObj = Model.PILLARS.find((p) => p.id === 'discipline');
+
+    // (a) pilar parcialmente pontuado: 3 competências com 4 e 3 sem nota => 4.0
+    // (divide pela CONTAGEM de pontuadas, não pelo total). Não pode ser 2.0.
+    const nbPartialPillar = {
+      id: 'nb1',
+      role: nbRole,
+      periods: { [cur]: { scores: { hard: {
+        [nbHard[0]]: 4, [nbHard[1]]: 4, [nbHard[2]]: 4,
+      } }, plan: [] } },
+    };
+    const nbAvg = Model.pillarAverage(nbPartialPillar, hardPillarObj, cur);
+    console.assert(
+      nbAvg === 4,
+      'NINEBOX selftest (a): pilar com três 4s e três sem nota => média 4.0 (divide por pontuadas), obtido ' + nbAvg
+    );
+    console.assert(
+      nbAvg !== (4 + 4 + 4) / nbHard.length,
+      'NINEBOX selftest (a): média NÃO pode dividir pelo total de competências (seria ~2.0)'
+    );
+
+    // (b) pilar totalmente sem nota => null (não 0).
+    const nbEmptyPillar = {
+      id: 'nb2',
+      role: nbRole,
+      periods: { [cur]: { scores: { soft: { [nbSoft[0]]: 5 } }, plan: [] } },
+    };
+    console.assert(
+      Model.pillarAverage(nbEmptyPillar, hardPillarObj, cur) === null,
+      'NINEBOX selftest (b): pilar sem nenhuma competência pontuada deve retornar null'
+    );
+
+    // (c) performance/potential NÃO são arrastados a ~0 por um pilar vazio
+    // quando outro pilar tem notas. Só HardSkill pontuado (todos 4),
+    // Disciplina e Soft vazios. Desempenho = 0.5*hard + 0.5*disc; com disc null
+    // renormaliza para 100% hard => 4 (não ~2). Potencial = soft (vazio) => 0.
+    const nbOnlyHard = {
+      id: 'nb3',
+      role: nbRole,
+      periods: { [cur]: { scores: { hard: nbHard.reduce((o, n) => ((o[n] = 4), o), {}) }, plan: [] } },
+    };
+    const nbPerf = Model.performanceScore(nbOnlyHard, cur);
+    console.assert(
+      nbPerf === 4,
+      'NINEBOX selftest (c): desempenho só-HardSkill deve ser 4 (renormaliza, pilar vazio não arrasta), obtido ' + nbPerf
+    );
+    console.assert(
+      nbPerf > Model.SCALE_MIN + (Model.SCALE_MAX - Model.SCALE_MIN) / 3,
+      'NINEBOX selftest (c): desempenho só-HardSkill NÃO pode cair na faixa baixa (band > 0) por causa do pilar vazio'
+    );
+    // potencial (só soft, que está vazio) => 0, sem lançar.
+    console.assert(
+      Model.potentialScore(nbOnlyHard, cur) === 0,
+      'NINEBOX selftest (c): potencial sem SoftSkill pontuado deve ser 0 (consistente, sem throw)'
+    );
+    // membro parcial continua plotável e marcado 'parcial'.
+    console.assert(
+      Model.hasPlottableScores(nbOnlyHard, cur) === true &&
+        Model.evaluationProgress(nbOnlyHard, cur).status === 'parcial',
+      'NINEBOX selftest (e): membro com só HardSkill pontuado é plotável e parcial'
+    );
+    // e NÃO cai em 'Risco' só por ter os outros pilares vazios.
+    console.assert(
+      Model.nineBoxLabel(nbOnlyHard, cur) !== 'Risco',
+      "NINEBOX selftest (c): membro só-HardSkill (notas 4) NÃO pode ser rotulado 'Risco'"
+    );
+
+    // (d) membro SEM nenhuma nota não é plotável (excluído do Nine Box) e seu
+    // rótulo é 'não avaliado', nunca um quadrante em (0,0).
+    const nbNone = {
+      id: 'nb4',
+      role: nbRole,
+      periods: { [cur]: { scores: {}, plan: [] } },
+    };
+    console.assert(
+      Model.hasPlottableScores(nbNone, cur) === false,
+      'NINEBOX selftest (d): membro sem nota não deve ser plotável'
+    );
+    console.assert(
+      Model.nineBoxLabel(nbNone, cur) === 'não avaliado',
+      "NINEBOX selftest (d): membro sem nota deve ter rótulo 'não avaliado' (não um quadrante)"
+    );
+    console.assert(
+      Model.nineBoxCell(nbNone, cur) === null,
+      'NINEBOX selftest (d): nineBoxCell de membro sem nota deve ser null'
+    );
+    // eixos de membro sem nota retornam 0 de forma sã, sem lançar.
+    console.assert(
+      Model.performanceScore(nbNone, cur) === 0 && Model.potentialScore(nbNone, cur) === 0,
+      'NINEBOX selftest (d): eixos de membro sem nota devem ser 0 (sem throw)'
+    );
+
+    // (e) membro COMPLETO é plotável e status 'completa'.
+    const nbFull = {
+      id: 'nb5',
+      role: nbRole,
+      periods: { [cur]: { scores: {
+        hard: nbHard.reduce((o, n) => ((o[n] = 4), o), {}),
+        soft: nbSoft.reduce((o, n) => ((o[n] = 4), o), {}),
+        discipline: nbDisc.reduce((o, n) => ((o[n] = 4), o), {}),
+      }, plan: [] } },
+    };
+    console.assert(
+      Model.hasPlottableScores(nbFull, cur) === true &&
+        Model.evaluationProgress(nbFull, cur).status === 'completa',
+      'NINEBOX selftest (e): membro com tudo pontuado é plotável e completa'
+    );
+
+    // (f) band defensivo: null/não-finito não vira banda 0.
+    console.assert(
+      Model.band(null) === null && Model.band(undefined) === null && Model.band(NaN) === null,
+      'NINEBOX selftest (f): band(null/undefined/NaN) deve ser null (guarda contra band 0)'
+    );
+    console.assert(
+      Model.band(1) === 0 && Model.band(5) === 2,
+      'NINEBOX selftest (f): band de valores reais inalterado (1=>0, 5=>2)'
+    );
+
+    console.log('[NINEBOX] self-tests executados (ver asserts acima, se houver).');
   }
 
   // --------------------------- Bootstrap -----------------------------------

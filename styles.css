@@ -323,8 +323,28 @@ body {
   font-size: 14px; color: var(--muted);
 }
 .legend-item .lg-dot { width: 12px; height: 12px; border-radius: 50%; }
+/* Ponto vazado para avaliação PARCIAL: espelha o anel do scatter (borda azul
+   clara + interior translúcido) para distinguir de uma avaliação completa. */
+.legend-item .lg-dot-partial {
+  background: rgba(96, 165, 250, 0.12);
+  border: 2px solid #93b4fb;
+}
+/* Marcador '(parcial)' ao lado do nome na legenda do Nine Box. */
+.legend-item .lg-partial { font-size: 12px; color: #93b4fb; font-weight: 600; }
 /* Nota de movimento vs. trimestre anterior na legenda do Nine Box (FEAT-003). */
 .legend-item .lg-move { font-size: 12px; color: var(--muted); opacity: 0.85; }
+
+/* Nota dos colaboradores NÃO avaliados no trimestre (não plotados no Nine Box).
+   Ocupa a largura toda abaixo da legenda, em tom discreto. */
+.ninebox-unscored {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+}
+.ninebox-unscored .unscored-title { font-weight: 600; color: #cbd5e1; }
 
 .section-title { font-size: 17px; margin: 28px 0 14px; }
 .ninebox-guide {
